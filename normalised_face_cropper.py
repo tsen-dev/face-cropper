@@ -22,52 +22,86 @@ class NormalisedFaceCropper:
         :return: A sub-image containing only the face.
         """
 
-        image_width, image_height = image.shape[:2]
-
         # Detect face and landmarks
         detected_faces = self.face_detector.process(image).detections
         detected_landmarks = self.landmark_detector.process(image).multi_face_landmarks
 
-        if detected_faces is None or detected_landmarks is None: return None, NormalisedFaceCropper.NO_FACES_DETECTED
+        if detected_faces is None or detected_landmarks is None: return None
 
-        face_landmarks = detected_landmarks[0].landmark
+        else:
+            image_height, image_width = image.shape[:2]
+            face_landmarks = detected_landmarks[0].landmark
 
-        left_eye_landmarks = [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246]
-        right_eye_landmarks = [362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398]
+            left_eye_landmark_indices = [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246]
+            right_eye_landmark_indices = [362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398]
 
-        left_eye_centre = (sum([int(face_landmarks[index].x * image_width) for index in left_eye_landmarks]) // 16,
-                           sum([int(face_landmarks[index].y * image_height) for index in left_eye_landmarks]) // 16)
-        right_eye_centre = (sum([int(face_landmarks[index].x * image_width) for index in right_eye_landmarks]) // 16,
-                            sum([int(face_landmarks[index].y * image_height) for index in right_eye_landmarks]) // 16)
-        eye_centre = ((left_eye_centre[0] + right_eye_centre[0]) // 2, (left_eye_centre[1] + right_eye_centre[1]) // 2)
+            left_eye_centre = (
+            round(np.sum([face_landmarks[index].x for index in left_eye_landmark_indices]) * image_width / len(left_eye_landmark_indices)),
+            image_height - 1 - round(np.sum([face_landmarks[index].y for index in left_eye_landmark_indices]) * image_height / len(left_eye_landmark_indices)))
 
-        gradient = (right_eye_centre[1] - eye_centre[1]) / (right_eye_centre[0] - eye_centre[0] + 1e-20)
-        rotation_angle = math.degrees(np.arctan(gradient))
-        rotation_matrix = cv2.getRotationMatrix2D(eye_centre, rotation_angle, 1)
-        image_blac = cv2.warpAffine(image, rotation_matrix, (image.shape[1], image.shape[0]))
+            right_eye_centre = (
+            round(np.sum([face_landmarks[index].x for index in right_eye_landmark_indices]) * image_width / len(right_eye_landmark_indices)),
+            image_height - 1 - round(np.sum([face_landmarks[index].y for index in right_eye_landmark_indices]) * image_height / len(right_eye_landmark_indices)))
 
-        face = detected_faces[0].location_data.relative_bounding_box
-        left, bottom, right, top = int(face.xmin * image_width), int(face.ymin * image_height), \
-                                   int((face.xmin + face.width) * image_width), int(
-            (face.ymin + face.height) * image_height)
-        if left < 0: left = 0
-        if right > image_width: right = image_width
-        if bottom < 0: bottom = 0
-        if top > image_height: top = image_height
+            im = image.copy()
+            cv2.circle(im, (left_eye_centre[0], image_height - left_eye_centre[1]), 5, (0, 255, 0))
+            cv2.circle(im, (right_eye_centre[0], image_height - right_eye_centre[1]), 5, (255, 255, 255))
+            m = (
+                int((right_eye_centre[0] + left_eye_centre[0]) / 2),
+                image_height - 1 - int((right_eye_centre[1] + left_eye_centre[1]) / 2)
+            )
+            cv2.circle(im, m, 5, (255, 0, 255))
 
-        return image_blac[bottom:top, left:right]
+            cv2.imshow("masked", im)
 
-    def get_eye_centres(self, image):
-        """
-        Calculate and return the pixel coordinates of the centres of the eyes in a face
-        :param image:
-        :return:
-        """
+            gradient = 0
 
-    def get_face_rotation(self, left_eye_centre, right_eye_centre):
-        """
-        Calculates the in-plane rotation angle of a face using the centre coordinates of the eyes.
-        :param left_eye_centre: Pixel coordinate of the left eye's centre.
-        :param right_eye_centre: Pixel coordinate of the right eye's centre.
-        :return: The in-plane rotation angle of the face in degrees.
-        """
+            if right_eye_centre[1] == left_eye_centre[1]:  # 0 or 180 degree rotation
+                if right_eye_centre[0] >= left_eye_centre[0]: rotation_angle = 0
+                else: rotation_angle = 180
+
+            elif right_eye_centre[0] == left_eye_centre[0]:  # 90 or 270 degree rotation
+                if right_eye_centre[1] > left_eye_centre[1]: rotation_angle = 90
+                else: rotation_angle = 270
+
+            else:  # Rotation between 0 and 360 degrees excluding 0, 90, and 270
+                gradient = (right_eye_centre[1] - left_eye_centre[1]) / (right_eye_centre[0] - left_eye_centre[0])
+                if right_eye_centre[0] > left_eye_centre[0]: rotation_angle = np.degrees(np.arctan(gradient))  # Rotation between 0 and 90 or 270 i.e. -90 and 0 degrees
+                else: rotation_angle = 180 + np.degrees(np.arctan(gradient))  # Rotation between 90 and 270 degrees
+
+            print("left:{0}\nright:{1}\nx:{2}\ny:{3}\ngradient:{4}\nangle:{5}\n\n".format(left_eye_centre, right_eye_centre, right_eye_centre[0] - left_eye_centre[0], right_eye_centre[1] - left_eye_centre[1],gradient, rotation_angle))
+
+            rotation_matrix = cv2.getRotationMatrix2D(m, -rotation_angle, 1)
+            image_blac = cv2.warpAffine(image, rotation_matrix, (image.shape[1], image.shape[0]))
+
+            face = detected_faces[0].location_data.relative_bounding_box
+            left, bottom, right, top = int(face.xmin * image_width), int(face.ymin * image_height), \
+                                       int((face.xmin + face.width) * image_width), int(
+                (face.ymin + face.height) * image_height)
+
+            if left < 0: left = 0
+            if right > image_width: right = image_width
+            if bottom < 0: bottom = 0
+            if top > image_height: top = image_height
+
+            return image_blac[bottom:top, left:right]
+
+
+    # def get_eye_centre(self, eye_landmarks_x, eye_coordinates_y, image_size):
+    #     """
+    #     Calculate and return the pixel coordinates of the centre of an eye in the face
+    #     :param eye_landmarks: The landmarks for the eye. Must be a list of
+    #     :param
+    #     mediapipe.framework.formats.landmark_pb2.NormalizedLandmark objects.
+    #     :return: A tuple containing the pixel coordinates of the centre of the eye.
+    #     """
+    #
+    #
+    #
+    # def get_face_rotation(self, left_eye_centre, right_eye_centre):
+    #     """
+    #     Calculates the in-plane rotation angle of a face using the centre coordinates of the eyes.
+    #     :param left_eye_centre: Pixel coordinate of the left eye's centre.
+    #     :param right_eye_centre: Pixel coordinate of the right eye's centre.
+    #     :return: The in-plane rotation angle of the face in degrees.
+    #     """
