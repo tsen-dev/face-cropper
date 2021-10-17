@@ -1,7 +1,6 @@
 import mediapipe as mp
 import numpy as np
 import cv2
-import math
 
 
 class NormalisedFaceCropper:
@@ -11,8 +10,6 @@ class NormalisedFaceCropper:
         """
         Initialises a FaceCropper object
         """
-
-        self.face_detector = mp.solutions.face_detection.FaceDetection()
         self.landmark_detector = mp.solutions.face_mesh.FaceMesh()
 
     def crop_face_from_image(self, image):
@@ -23,10 +20,9 @@ class NormalisedFaceCropper:
         """
 
         # Detect face and landmarks
-        detected_faces = self.face_detector.process(image).detections
         detected_landmarks = self.landmark_detector.process(image).multi_face_landmarks
 
-        if detected_faces is None or detected_landmarks is None: return None
+        if detected_landmarks is None: return None
 
         else:
             image_height, image_width = image.shape[:2]
@@ -51,70 +47,75 @@ class NormalisedFaceCropper:
                 image_height - 1 - int((right_eye_centre[1] + left_eye_centre[1]) / 2)
             )
 
-            face = detected_faces[0].location_data.relative_bounding_box
-            left, bottom, right, top = int(face.xmin * image_width), int(face.ymin * image_height), \
-                                       int((face.xmin + face.width) * image_width), int(
-                (face.ymin + face.height) * image_height)
-
             for landmark in face_landmarks:
                 cv2.circle(im, (round(landmark.x*image_width), round(landmark.y*image_height)), 1, (0, 0, 255))
 
-            cv2.rectangle(im, (left, bottom), (right, top), (0, 255, 0))
-            cv2.circle(im, m, 5, (255, 0, 255))
-
-
-
-            gradient = 0
-
-            if right_eye_centre[1] == left_eye_centre[1]:  # 0 or 180 degree rotation
-                if right_eye_centre[0] >= left_eye_centre[0]: rotation_angle = 0
-                else: rotation_angle = 180
-
-            elif right_eye_centre[0] == left_eye_centre[0]:  # 90 or 270 degree rotation
-                if right_eye_centre[1] > left_eye_centre[1]: rotation_angle = 90
-                else: rotation_angle = 270
-
-            else:  # Rotation between 0 and 360 degrees excluding 0, 90, and 270
-                gradient = (right_eye_centre[1] - left_eye_centre[1]) / (right_eye_centre[0] - left_eye_centre[0])
-                if right_eye_centre[0] > left_eye_centre[0]: rotation_angle = np.degrees(np.arctan(gradient))  # Rotation between 0 and 90 or 270 i.e. -90 and 0 degrees
-                else: rotation_angle = 180 + np.degrees(np.arctan(gradient))  # Rotation between 90 and 270 degrees
-
-            print("left:{0}\nright:{1}\nx:{2}\ny:{3}\ngradient:{4}\nangle:{5}\n\n".format(left_eye_centre, right_eye_centre, right_eye_centre[0] - left_eye_centre[0], right_eye_centre[1] - left_eye_centre[1],gradient, rotation_angle))
+            rotation_angle = self.get_in_plane_rotation_angle(left_eye_centre, right_eye_centre)
 
             rotation_matrix = cv2.getRotationMatrix2D(m, -rotation_angle, 1)
-            image_blac = cv2.warpAffine(image, rotation_matrix, image.shape[:2])
+            image_blac = cv2.warpAffine(image, rotation_matrix, (image.shape[1], image.shape[0]))
 
-            face = detected_faces[0].location_data.relative_bounding_box
-            # left, bottom, right, top = int(face.xmin * image_width), int(face.ymin * image_height), \
-            #                            int((face.xmin + face.width) * image_width), int(
-            #     (face.ymin + face.height) * image_height)
+            cv2.circle(im, (round(face_landmarks[234].x*image_width), round(face_landmarks[234].y*image_height)), 5, (0, 255, 255))
+            cv2.circle(im, (round(face_landmarks[152].x*image_width), round(face_landmarks[152].y*image_height)), 5, (0, 255, 255))
+            cv2.circle(im, (round(face_landmarks[454].x*image_width), round(face_landmarks[454].y*image_height)), 5, (0, 255, 255))
+            cv2.circle(im, (round(face_landmarks[10].x*image_width), round(face_landmarks[10].y*image_height)), 5, (0, 255, 255))
 
             left = np.matmul(rotation_matrix, np.array([face_landmarks[234].x*image_width, face_landmarks[234].y*image_height, 1]))
             bottom = np.matmul(rotation_matrix, np.array([face_landmarks[152].x * image_width, face_landmarks[152].y * image_height, 1]))
             right = np.matmul(rotation_matrix, np.array([face_landmarks[454].x * image_width, face_landmarks[454].y * image_height, 1]))
             top = np.matmul(rotation_matrix, np.array([face_landmarks[10].x * image_width, face_landmarks[10].y * image_height, 1]))
 
-            cv2.rectangle(im, (round(left[0]), round(bottom[1])), (round(right[0]), round(top[1])), (0, 128, 128))
+            cv2.circle(im, (round(left[0]), round(left[1])), 5, (0, 255, 255))
+            cv2.circle(im, (round(right[0]), round(right[1])), 5, (0, 255, 255))
+            cv2.circle(im, (round(top[0]), round(top[1])), 5, (0, 255, 255))
+            cv2.circle(im, (round(bottom[0]), round(bottom[1])), 5, (0, 255, 255))
+            cv2.rectangle(im, (round(face_landmarks[234].x*image_width), round(face_landmarks[152].y*image_height)), (round(face_landmarks[454].x*image_width), round(face_landmarks[10].y*image_height)), (0, 255, 255))
+
+            imrot = image_blac.copy()
+            cv2.rectangle(im, (round(left[0]), round(bottom[1])), (round(right[0]), round(top[1])), (255, 0, 0))
+            cv2.circle(im, (round(left[0]), round(left[1])), 5, (255, 0, 0))
+            cv2.circle(im, (round(right[0]), round(right[1])), 5, (255, 0, 0))
+            cv2.circle(im, (round(top[0]), round(top[1])), 5, (255, 0, 0))
+            cv2.circle(im, (round(bottom[0]), round(bottom[1])), 5, (255, 0, 0))
+            cv2.imshow("imrot", imrot)
             cv2.imshow("masked", im)
 
             return image_blac[round(top[1]):round(bottom[1]), round(left[0]):round(right[0])]
 
 
-    # def get_eye_centre(self, eye_landmarks_x, eye_coordinates_y, image_size):
-    #     """
-    #     Calculate and return the pixel coordinates of the centre of an eye in the face
-    #     :param eye_landmarks: The landmarks for the eye. Must be a list of
-    #     :param
-    #     mediapipe.framework.formats.landmark_pb2.NormalizedLandmark objects.
-    #     :return: A tuple containing the pixel coordinates of the centre of the eye.
-    #     """
-    #
-    #
-    #
-    # def get_face_rotation(self, left_eye_centre, right_eye_centre):
-    #     """
-    #     Calculates the in-plane rotation angle of a face using the centre coordinates of the eyes.
-    #     :param left_eye_centre: Pixel coordinate of the left eye's centre.
-    #     :param right_eye_centre: Pixel coordinate of the right eye's centre.
-    #     :return: The in-plane rotation angle of the face in degrees.
-    #     """
+    def get_eye_centres(self, eye_landmarks_x, eye_coordinates_y, image_size):
+        """
+        Calculate and return the pixel coordinates of the centres of the left and right eyes in the face
+        :param eye_landmarks: The landmarks for the eye. Must be a list of
+        :param
+        mediapipe.framework.formats.landmark_pb2.NormalizedLandmark objects.
+        :return: A tuple containing the pixel coordinates of the centre of the eye.
+        """
+
+    def get_in_plane_rotation_angle(self, left_eye_centre, right_eye_centre):
+        """
+        Calculate and return the in-plane rotation angle of a face using the centre coordinates of the eyes.
+        :param left_eye_centre: (x, y) tuple containing the pixel coordinates of the left eye's centre.
+        :param right_eye_centre: (x, y) tuple containing the pixel coordinates of the right eye's centre.
+        :return: The in-plane rotation angle of the face in degrees.
+        """
+
+        if right_eye_centre[1] == left_eye_centre[1]:  # 0 or 180 degree rotation
+            if right_eye_centre[0] >= left_eye_centre[0]:
+                return 0
+            else:
+                return 180
+
+        elif right_eye_centre[0] == left_eye_centre[0]:  # 90 or 270 degree rotation
+            if right_eye_centre[1] > left_eye_centre[1]:
+                return 90
+            else:
+                return 270
+
+        else:  # Rotation between 0 and 360 degrees excluding 0, 90, and 270
+            gradient = (right_eye_centre[1] - left_eye_centre[1]) / (right_eye_centre[0] - left_eye_centre[0])
+            if right_eye_centre[0] > left_eye_centre[0]:
+                return np.degrees(np.arctan(gradient))  # Rotation between 0 and 90 or 270 and 0 i.e. -90 and 0 degrees
+            else:
+                return 180 + np.degrees(np.arctan(gradient))  # Rotation between 90 and 270 degrees
+
