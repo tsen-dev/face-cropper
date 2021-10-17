@@ -50,9 +50,19 @@ class NormalisedFaceCropper:
                 int((right_eye_centre[0] + left_eye_centre[0]) / 2),
                 image_height - 1 - int((right_eye_centre[1] + left_eye_centre[1]) / 2)
             )
+
+            face = detected_faces[0].location_data.relative_bounding_box
+            left, bottom, right, top = int(face.xmin * image_width), int(face.ymin * image_height), \
+                                       int((face.xmin + face.width) * image_width), int(
+                (face.ymin + face.height) * image_height)
+
+            for landmark in face_landmarks:
+                cv2.circle(im, (round(landmark.x*image_width), round(landmark.y*image_height)), 1, (0, 0, 255))
+
+            cv2.rectangle(im, (left, bottom), (right, top), (0, 255, 0))
             cv2.circle(im, m, 5, (255, 0, 255))
 
-            cv2.imshow("masked", im)
+
 
             gradient = 0
 
@@ -72,19 +82,22 @@ class NormalisedFaceCropper:
             print("left:{0}\nright:{1}\nx:{2}\ny:{3}\ngradient:{4}\nangle:{5}\n\n".format(left_eye_centre, right_eye_centre, right_eye_centre[0] - left_eye_centre[0], right_eye_centre[1] - left_eye_centre[1],gradient, rotation_angle))
 
             rotation_matrix = cv2.getRotationMatrix2D(m, -rotation_angle, 1)
-            image_blac = cv2.warpAffine(image, rotation_matrix, (image.shape[1], image.shape[0]))
+            image_blac = cv2.warpAffine(image, rotation_matrix, image.shape[:2])
 
             face = detected_faces[0].location_data.relative_bounding_box
-            left, bottom, right, top = int(face.xmin * image_width), int(face.ymin * image_height), \
-                                       int((face.xmin + face.width) * image_width), int(
-                (face.ymin + face.height) * image_height)
+            # left, bottom, right, top = int(face.xmin * image_width), int(face.ymin * image_height), \
+            #                            int((face.xmin + face.width) * image_width), int(
+            #     (face.ymin + face.height) * image_height)
 
-            if left < 0: left = 0
-            if right > image_width: right = image_width
-            if bottom < 0: bottom = 0
-            if top > image_height: top = image_height
+            left = np.matmul(rotation_matrix, np.array([face_landmarks[234].x*image_width, face_landmarks[234].y*image_height, 1]))
+            bottom = np.matmul(rotation_matrix, np.array([face_landmarks[152].x * image_width, face_landmarks[152].y * image_height, 1]))
+            right = np.matmul(rotation_matrix, np.array([face_landmarks[454].x * image_width, face_landmarks[454].y * image_height, 1]))
+            top = np.matmul(rotation_matrix, np.array([face_landmarks[10].x * image_width, face_landmarks[10].y * image_height, 1]))
 
-            return image_blac[bottom:top, left:right]
+            cv2.rectangle(im, (round(left[0]), round(bottom[1])), (round(right[0]), round(top[1])), (0, 128, 128))
+            cv2.imshow("masked", im)
+
+            return image_blac[round(top[1]):round(bottom[1]), round(left[0]):round(right[0])]
 
 
     # def get_eye_centre(self, eye_landmarks_x, eye_coordinates_y, image_size):
