@@ -4,7 +4,9 @@ import cv2
 
 
 class NormalisedFaceCropper:
-    NO_FACES_DETECTED = 0
+
+    left_eye_landmark_indices = [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246]
+    right_eye_landmark_indices = [362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398]
 
     def __init__(self):
         """
@@ -19,25 +21,20 @@ class NormalisedFaceCropper:
         :return: A sub-image containing only the face.
         """
 
-        # Detect face and landmarks
         detected_landmarks = self.landmark_detector.process(image).multi_face_landmarks
 
-        if detected_landmarks is None: return None
+        if detected_landmarks is None:  # No faces detected
+            return None
 
         else:
             image_height, image_width = image.shape[:2]
             face_landmarks = detected_landmarks[0].landmark
 
-            left_eye_landmark_indices = [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246]
-            right_eye_landmark_indices = [362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398]
-
-            left_eye_centre = (
-            round(np.sum([face_landmarks[index].x for index in left_eye_landmark_indices]) * image_width / len(left_eye_landmark_indices)),
-            image_height - 1 - round(np.sum([face_landmarks[index].y for index in left_eye_landmark_indices]) * image_height / len(left_eye_landmark_indices)))
-
-            right_eye_centre = (
-            round(np.sum([face_landmarks[index].x for index in right_eye_landmark_indices]) * image_width / len(right_eye_landmark_indices)),
-            image_height - 1 - round(np.sum([face_landmarks[index].y for index in right_eye_landmark_indices]) * image_height / len(right_eye_landmark_indices)))
+            left_eye_centre, right_eye_centre = self.get_left_and_right_eye_centres(
+                [face_landmarks[landmark] for landmark in NormalisedFaceCropper.left_eye_landmark_indices],
+                [face_landmarks[landmark] for landmark in NormalisedFaceCropper.right_eye_landmark_indices],
+                (image_width, image_height)
+            )
 
             im = image.copy()
             cv2.circle(im, (left_eye_centre[0], image_height - left_eye_centre[1]), 5, (0, 255, 0))
@@ -83,14 +80,28 @@ class NormalisedFaceCropper:
             return image_blac[round(top[1]):round(bottom[1]), round(left[0]):round(right[0])]
 
 
-    def get_eye_centres(self, eye_landmarks_x, eye_coordinates_y, image_size):
+    def get_left_and_right_eye_centres(self, left_eye_landmarks, right_eye_landmarks, image_size):
         """
-        Calculate and return the pixel coordinates of the centres of the left and right eyes in the face
-        :param eye_landmarks: The landmarks for the eye. Must be a list of
-        :param
+        Calculate and return the pixel coordinates of the centres of the left and right eyes in the face. The y
+        coordinate is converted from a row number to a height value so that the y coordinate increases for points higher
+        up in the image, instead of decreasing.
+        :param left_eye_landmarks: The landmarks for the left eye. Must be a list of
         mediapipe.framework.formats.landmark_pb2.NormalizedLandmark objects.
-        :return: A tuple containing the pixel coordinates of the centre of the eye.
+        :param right_eye_landmarks: The landmarks for the right eye. Must be a list of
+        mediapipe.framework.formats.landmark_pb2.NormalizedLandmark objects.
+        :param image_size: (width, height) tuple containing the dimensions of the image with the face
+        :return: Two (x, y) tuples containing the pixel coordinates of the centres of the left and right eyes.
         """
+
+        left_eye_centre = (
+            round(np.sum([landmark.x for landmark in left_eye_landmarks]) * image_size[0] / len(left_eye_landmarks)),
+            image_size[1] - 1 - round(np.sum([landmark.y for landmark in left_eye_landmarks]) * image_size[1] / len(left_eye_landmarks)))
+
+        right_eye_centre = (
+            round(np.sum([landmark.x for landmark in right_eye_landmarks]) * image_size[0] / len(right_eye_landmarks)),
+            image_size[1] - 1 - round(np.sum([landmark.y for landmark in right_eye_landmarks]) * image_size[1] / len(right_eye_landmarks)))
+
+        return left_eye_centre, right_eye_centre
 
     def get_in_plane_rotation_angle(self, left_eye_centre, right_eye_centre):
         """
