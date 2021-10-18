@@ -159,6 +159,18 @@ class NormalisedFaceCropper:
         :return: The cropped image.
         """
 
+        if top < 0: top = 0
+        elif top >= image.shape[0]: top = image.shape[0] - 1
+
+        if bottom < 0: bottom = 0
+        elif bottom >= image.shape[0]: bottom = image.shape[0] - 1
+
+        if left < 0: left = 0
+        elif left >= image.shape[1]: left = image.shape[1] - 1
+
+        if right < 0: right = 0
+        elif right >= image.shape[1]: right = image.shape[1] - 1
+
         return image[top:bottom, left:right]
 
 
