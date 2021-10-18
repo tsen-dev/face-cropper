@@ -15,11 +15,11 @@ class NormalisedFaceCropper:
         """
         self.landmark_detector = mp.solutions.face_mesh.FaceMesh()
 
-    def crop_face_from_image(self, image):
+    def crop_faces_from_image(self, image):
         """
-        Crops out and returns the face in the supplied image. If the face is rotated in the plane of the image, this is reversed before cropping
+        Crop out and return the faces in the supplied image. Any roll in the faces is reversed before cropping.
         :param image: The image to be cropped. Must be in RGB format.
-        :return: A sub-image containing only the face.
+        :return: A list of sub-images containing only the faces.
         """
 
         detected_landmarks = self.landmark_detector.process(image).multi_face_landmarks
@@ -34,37 +34,42 @@ class NormalisedFaceCropper:
             left_eye_centre, right_eye_centre = self.get_left_and_right_eye_centres(
                 [face_landmarks[landmark] for landmark in NormalisedFaceCropper.left_eye_landmark_indices],
                 [face_landmarks[landmark] for landmark in NormalisedFaceCropper.right_eye_landmark_indices],
-                (image_width, image_height)
-            )
-
-            m = (
-                round((right_eye_centre[0] + left_eye_centre[0]) / 2),
-                image_height - 1 - round((right_eye_centre[1] + left_eye_centre[1]) / 2)
-            )
+                (image_width, image_height))
+            eyes_midpoint = self.get_eyes_midpoint(left_eye_centre, right_eye_centre, image_height)
 
             roll_angle = self.get_face_roll_angle(left_eye_centre, right_eye_centre)
-            rotation_matrix = cv2.getRotationMatrix2D(m, -roll_angle, 1)
-            rotated_image = cv2.warpAffine(image, rotation_matrix, (image.shape[1], image.shape[0]))
-
+            rotation_matrix = cv2.getRotationMatrix2D(eyes_midpoint, -roll_angle, 1)
             rotated_landmarks = self.rotate_landmarks(
                 [face_landmarks[landmark] for landmark in NormalisedFaceCropper.face_edge_landmark_indices],
                 rotation_matrix,
                 (image_width, image_height))
 
-            return rotated_image[rotated_landmarks[1, 3]:rotated_landmarks[1, 1], rotated_landmarks[0, 0]:rotated_landmarks[0, 2]]
+            # im = image.copy()
+            # for landmark in face_landmarks:
+            #     cv2.circle(im, (round(landmark.x*image_width), round(landmark.y*image_height)), 3, (0, 255, 0))
+            # cv2.imshow("im", im)
+            # print(face_landmarks[NormalisedFaceCropper.face_edge_landmark_indices[0]].x*image_width)
+
+            rotated_image = cv2.warpAffine(image, rotation_matrix, (image.shape[1], image.shape[0]))
+            return self.crop_image(
+                rotated_image,
+                top=rotated_landmarks[1, 3],
+                bottom=rotated_landmarks[1, 1],
+                left=rotated_landmarks[0, 0],
+                right=rotated_landmarks[0, 2])
 
 
     def get_left_and_right_eye_centres(self, left_eye_landmarks, right_eye_landmarks, image_size):
         """
         Calculate and return the pixel coordinates of the centres of the left and right eyes in the face. The y
         coordinate is converted from a row number to a height value so that the y coordinate increases for points higher
-        up in the image, instead of decreasing.
+        up in the image, instead of decreasing. All values are rounded to the nearest integer.
         :param left_eye_landmarks: The landmarks for the left eye. Must be a list of
         mediapipe.framework.formats.landmark_pb2.NormalizedLandmark objects.
         :param right_eye_landmarks: The landmarks for the right eye. Must be a list of
         mediapipe.framework.formats.landmark_pb2.NormalizedLandmark objects.
         :param image_size: (width, height) tuple containing the dimensions of the image with the face
-        :return: Two (x, y) tuples containing the pixel coordinates of the centres of the left and right eyes.
+        :return: Two (x, y) integer tuples containing the pixel coordinates of the centres of the left and right eyes.
         """
 
         left_eye_centre = (
@@ -76,6 +81,21 @@ class NormalisedFaceCropper:
             image_size[1] - 1 - round(np.sum([landmark.y for landmark in right_eye_landmarks]) * image_size[1] / len(right_eye_landmarks)))
 
         return left_eye_centre, right_eye_centre
+
+
+    def get_eyes_midpoint(self, left_eye_centre, right_eye_centre, image_height):
+        """
+        Calculate and return the coordinates of the midpoint between the two eyes of a face. The y value is converted
+        from a row number to a height value so that the y coordinate increases for points higher up in the image,
+        instead of decreasing. All values are rounded to the nearest integer.
+        :param left_eye_centre: (x, y) tuple containing the pixel coordinates of the left eye's centre.
+        :param right_eye_centre: (x, y) tuple containing the pixel coordinates of the left eye's centre.
+        :param image_height: The height of the image containing the eyes.
+        :return: (x, y) integer tuple containing the pixel coordinates of the midpoint between the left and right eyes.
+        """
+
+        return (round((left_eye_centre[0] + right_eye_centre[0]) / 2),
+                image_height - 1 - round((left_eye_centre[1] + right_eye_centre[1]) / 2))
 
 
     def get_face_roll_angle(self, left_eye_centre, right_eye_centre):
@@ -125,4 +145,22 @@ class NormalisedFaceCropper:
                 [1, 1, 1, 1]]))
 
         return np.ndarray.astype(np.rint(rotated_landmarks), np.int)
+
+
+    def crop_image(self, image, top, bottom, left, right):
+        """
+        Crop the supplied image within the provided boundaries. If a boundary is outside the perimeter of the image, it
+        is clipped to the perimeter edge value.
+        :param image: The image to be cropped.
+        :param top: The top boundary of the crop.
+        :param bottom: The bottom boundary of the crop.
+        :param left: The left boundary of the crop.
+        :param right: The right boundary of the crop.
+        :return: The cropped image.
+        """
+
+        return image[top:bottom, left:right]
+
+
+
 

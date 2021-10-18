@@ -8,7 +8,7 @@ while True:
     read_successful, image = camera.read()
     if not read_successful: raise RuntimeError('Image could not be read from camera!')
 
-    face_image = normalised_face_cropper.crop_face_from_image(image)
+    face_image = normalised_face_cropper.crop_faces_from_image(image)
 
     if face_image is None: print("No faces detected!")
     else:
