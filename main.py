@@ -8,12 +8,12 @@ while True:
     read_successful, image = camera.read()
     if not read_successful: raise RuntimeError('Image could not be read from camera!')
 
-    face_image = normalised_face_cropper.crop_faces_from_image(image)
-
-    if face_image is None: print("No faces detected!")
+    face_images = normalised_face_cropper.crop_faces_from_image(image)
+    if face_images is None: print("No faces detected!")
     else:
         cv2.imshow('Camera', image)
-        cv2.imshow('Normalised face crop', face_image)
+        for face_id, face_image in enumerate(face_images):
+            cv2.imshow('Face{0}'.format(face_id), face_image)
 
     if cv2.pollKey() != -1:  # User pressed key
         camera.release()

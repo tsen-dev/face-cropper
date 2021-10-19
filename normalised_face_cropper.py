@@ -13,7 +13,7 @@ class NormalisedFaceCropper:
         """
         Initialises a FaceCropper object
         """
-        self.landmark_detector = mp.solutions.face_mesh.FaceMesh()
+        self.landmark_detector = mp.solutions.face_mesh.FaceMesh(max_num_faces=4, min_detection_confidence=0.4)
 
     def crop_faces_from_image(self, image):
         """
@@ -28,35 +28,33 @@ class NormalisedFaceCropper:
             return None
 
         else:
+            face_images = []
             image_height, image_width = image.shape[:2]
-            face_landmarks = detected_landmarks[0].landmark
 
-            left_eye_centre, right_eye_centre = self.get_left_and_right_eye_centres(
-                [face_landmarks[landmark] for landmark in NormalisedFaceCropper.left_eye_landmark_indices],
-                [face_landmarks[landmark] for landmark in NormalisedFaceCropper.right_eye_landmark_indices],
-                (image_width, image_height))
-            eyes_midpoint = self.get_eyes_midpoint(left_eye_centre, right_eye_centre, image_height)
+            for face in detected_landmarks:
+                left_eye_centre, right_eye_centre = self.get_left_and_right_eye_centres(
+                    [face.landmark[landmark] for landmark in NormalisedFaceCropper.left_eye_landmark_indices],
+                    [face.landmark[landmark] for landmark in NormalisedFaceCropper.right_eye_landmark_indices],
+                    (image_width, image_height))
+                eyes_midpoint = self.get_eyes_midpoint(left_eye_centre, right_eye_centre, image_height)
 
-            roll_angle = self.get_face_roll_angle(left_eye_centre, right_eye_centre)
-            rotation_matrix = cv2.getRotationMatrix2D(eyes_midpoint, -roll_angle, 1)
-            rotated_landmarks = self.rotate_landmarks(
-                [face_landmarks[landmark] for landmark in NormalisedFaceCropper.face_edge_landmark_indices],
-                rotation_matrix,
-                (image_width, image_height))
+                roll_angle = self.get_face_roll_angle(left_eye_centre, right_eye_centre)
+                rotation_matrix = cv2.getRotationMatrix2D(eyes_midpoint, -roll_angle, 1)
+                rotated_landmarks = self.rotate_landmarks(
+                    [face.landmark[landmark] for landmark in NormalisedFaceCropper.face_edge_landmark_indices],
+                    rotation_matrix,
+                    (image_width, image_height))
 
-            # im = image.copy()
-            # for landmark in face_landmarks:
-            #     cv2.circle(im, (round(landmark.x*image_width), round(landmark.y*image_height)), 3, (0, 255, 0))
-            # cv2.imshow("im", im)
-            # print(face_landmarks[NormalisedFaceCropper.face_edge_landmark_indices[0]].x*image_width)
+                rotated_image = cv2.warpAffine(image, rotation_matrix, (image.shape[1], image.shape[0]))
+                face_images.append(
+                    self.crop_image(
+                        rotated_image,
+                        top=rotated_landmarks[1, 3],
+                        bottom=rotated_landmarks[1, 1],
+                        left=rotated_landmarks[0, 0],
+                        right=rotated_landmarks[0, 2]))
 
-            rotated_image = cv2.warpAffine(image, rotation_matrix, (image.shape[1], image.shape[0]))
-            return self.crop_image(
-                rotated_image,
-                top=rotated_landmarks[1, 3],
-                bottom=rotated_landmarks[1, 1],
-                left=rotated_landmarks[0, 0],
-                right=rotated_landmarks[0, 2])
+            return face_images
 
 
     def get_left_and_right_eye_centres(self, left_eye_landmarks, right_eye_landmarks, image_size):
@@ -134,9 +132,9 @@ class NormalisedFaceCropper:
         mediapipe.framework.formats.landmark_pb2.NormalizedLandmark objects.
         :param rotation_matrix: 3x2 transformation matrix for rotation around a specified point.
         :param image_size: (width, height) tuple containing the dimensions of the image containing the landmarks
-        :return: A 2xn integer matrix. The first row contains the new x values while the second row contains the new y
-        values. Each column contains the new coordinates for a landmark such that the first column stores the first
-        landmark's new location, and so on.
+        :return: A 2xn integer matrix where n is the number of landmarks. The first row contains the new x values while
+        the second row contains the new y values. Each column contains the new coordinates for a landmark such that the
+        first column stores the first landmark's new location, and so on.
         """
 
         rotated_landmarks = np.matmul(rotation_matrix, np.array(
