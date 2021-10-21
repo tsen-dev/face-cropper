@@ -36,13 +36,7 @@ class NormalisedFaceCropper:
                     [face_box.xmin * image_width, face_box.ymin * image_height],  # Bottom left
                     [(face_box.xmin + face_box.width) * image_width, (face_box.ymin + face_box.height) * image_height]])), np.int)  # Top right
 
-                face_image = self.safe_crop_image(
-                    image,
-                    top=face_bounds[0][1],
-                    bottom=face_bounds[1][1],
-                    left=face_bounds[0][0],
-                    right=face_bounds[1][0])
-
+                face_image = self.safe_crop_image(image, face_bounds[0][1], face_bounds[1][1], face_bounds[0][0], face_bounds[1][0])
                 detected_landmarks = self.landmark_detector.process(face_image).multi_face_landmarks
 
                 if detected_landmarks is not None:
@@ -56,20 +50,14 @@ class NormalisedFaceCropper:
                     eyes_midpoint = self.get_eyes_midpoint(left_eye_centre, right_eye_centre, face_height)
 
                     roll_angle = self.get_face_roll_angle(left_eye_centre, right_eye_centre)
-                    rotation_matrix = cv2.getRotationMatrix2D(eyes_midpoint, -roll_angle, 1)
+                    rotation_matrix = cv2.getRotationMatrix2D((int(eyes_midpoint[0]), int(eyes_midpoint[1])), -roll_angle, 1)
                     rotated_landmarks = self.rotate_landmarks(
                         [face.landmark[landmark] for landmark in NormalisedFaceCropper.face_edge_landmark_indices],
-                        rotation_matrix,
-                        (face_width, face_height))
+                        rotation_matrix, (face_width, face_height))
 
                     rotated_face_image = cv2.warpAffine(face_image, rotation_matrix, (image.shape[1], image.shape[0]))
                     normalised_face_images.append(
-                        self.safe_crop_image(
-                            rotated_face_image,
-                            top=rotated_landmarks[1, 3],
-                            bottom=rotated_landmarks[1, 1],
-                            left=rotated_landmarks[0, 0],
-                            right=rotated_landmarks[0, 2]))
+                        self.safe_crop_image(rotated_face_image, rotated_landmarks[1, 3], rotated_landmarks[1, 1], rotated_landmarks[0, 0], rotated_landmarks[0, 2]))
 
             return normalised_face_images
 
@@ -84,16 +72,16 @@ class NormalisedFaceCropper:
         :param right_eye_landmarks: The landmarks for the right eye. Must be a list of
         mediapipe.framework.formats.landmark_pb2.NormalizedLandmark objects.
         :param image_size: (width, height) tuple containing the dimensions of the image with the face
-        :return: Two (x, y) integer tuples containing the pixel coordinates of the centres of the left and right eyes.
+        :return: Two [x, y] integer arrays containing the pixel coordinates of the centres of the left and right eyes respectively.
         """
 
-        left_eye_centre = (
-            round(np.sum([landmark.x for landmark in left_eye_landmarks]) * image_size[0] / len(left_eye_landmarks)),
-            image_size[1] - 1 - round(np.sum([landmark.y for landmark in left_eye_landmarks]) * image_size[1] / len(left_eye_landmarks)))
+        left_eye_centre = np.ndarray.astype(np.rint(np.array([
+            np.sum([landmark.x for landmark in left_eye_landmarks]) * image_size[0] / len(left_eye_landmarks),
+            image_size[1] - 1 - np.sum([landmark.y for landmark in left_eye_landmarks]) * image_size[1] / len(left_eye_landmarks)])), np.int)
 
-        right_eye_centre = (
-            round(np.sum([landmark.x for landmark in right_eye_landmarks]) * image_size[0] / len(right_eye_landmarks)),
-            image_size[1] - 1 - round(np.sum([landmark.y for landmark in right_eye_landmarks]) * image_size[1] / len(right_eye_landmarks)))
+        right_eye_centre = np.ndarray.astype(np.rint(np.array([
+            np.sum([landmark.x for landmark in right_eye_landmarks]) * image_size[0] / len(right_eye_landmarks),
+            image_size[1] - 1 - np.sum([landmark.y for landmark in right_eye_landmarks]) * image_size[1] / len(right_eye_landmarks)])), np.int)
 
         return left_eye_centre, right_eye_centre
 
@@ -103,21 +91,23 @@ class NormalisedFaceCropper:
         Calculate and return the coordinates of the midpoint between the two eyes of a face. The y value is converted
         from a row number to a height value so that the y coordinate increases for points higher up in the image,
         instead of decreasing. All values are rounded to the nearest integer.
-        :param left_eye_centre: (x, y) tuple containing the pixel coordinates of the left eye's centre.
-        :param right_eye_centre: (x, y) tuple containing the pixel coordinates of the left eye's centre.
+        :param left_eye_centre: [x, y] array containing the pixel coordinates of the left eye's centre.
+        :param right_eye_centre: [x, y] array containing the pixel coordinates of the left eye's centre.
         :param image_height: The height of the image containing the eyes.
-        :return: (x, y) integer tuple containing the pixel coordinates of the midpoint between the left and right eyes.
+        :return: [x, y] integer array containing the pixel coordinates of the midpoint between the left and right eyes.
         """
 
-        return (round((left_eye_centre[0] + right_eye_centre[0]) / 2),
-                image_height - 1 - round((left_eye_centre[1] + right_eye_centre[1]) / 2))
+        return np.ndarray.astype(np.rint(np.array([
+            (left_eye_centre[0] + right_eye_centre[0]) / 2,
+            image_height - 1 - (left_eye_centre[1] + right_eye_centre[1]) / 2])), np.int)
+
 
 
     def get_face_roll_angle(self, left_eye_centre, right_eye_centre):
         """
         Calculate and return the in-plane rotation angle of a face using the centre coordinates of the eyes.
-        :param left_eye_centre: (x, y) tuple containing the pixel coordinates of the left eye's centre.
-        :param right_eye_centre: (x, y) tuple containing the pixel coordinates of the right eye's centre.
+        :param left_eye_centre: [x, y] array containing the pixel coordinates of the left eye's centre.
+        :param right_eye_centre: [x, y] array containing the pixel coordinates of the right eye's centre.
         :return: The roll angle of the face in degrees.
         """
 
@@ -154,12 +144,10 @@ class NormalisedFaceCropper:
         first column stores the first landmark's new location, and so on.
         """
 
-        rotated_landmarks = np.matmul(rotation_matrix, np.array(
+        return np.ndarray.astype(np.rint(np.matmul(rotation_matrix, np.array(
                 [[landmark.x * image_size[0] for landmark in landmarks],
                 [landmark.y * image_size[1] for landmark in landmarks],
-                [1, 1, 1, 1]]))
-
-        return np.ndarray.astype(np.rint(rotated_landmarks), np.int)
+                [1, 1, 1, 1]]))), np.int)
 
 
     def safe_crop_image(self, image, top, bottom, left, right):
@@ -167,10 +155,10 @@ class NormalisedFaceCropper:
         Crop the supplied image within the provided boundaries. If a boundary is outside the perimeter of the image, it
         is clipped to the perimeter edge value.
         :param image: The image to be cropped.
-        :param top: Maximum y coordinate of the crop boundary. Must be a row number instead of a height value.
-        :param bottom: Minimum y coordinate of the crop boundary. Must be a row number instead of a height value.
-        :param left: Minimum x coordinate of the crop boundary.
-        :param right: Maximum x coordinate of the crop boundary.
+        :param top: Maximum integer y coordinate of the crop boundary. Must be a row number instead of a height value.
+        :param bottom: Minimum integer y coordinate of the crop boundary. Must be a row number instead of a height value.
+        :param left: Minimum integer x coordinate of the crop boundary.
+        :param right: Maximum integer x coordinate of the crop boundary.
         :return: The cropped image.
         """
 
