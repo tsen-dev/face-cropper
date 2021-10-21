@@ -13,7 +13,9 @@ class NormalisedFaceCropper:
         """
         Initialises a FaceCropper object
         """
-        self.landmark_detector = mp.solutions.face_mesh.FaceMesh(max_num_faces=4, min_detection_confidence=0.4)
+
+        self.face_detector = mp.solutions.face_detection.FaceDetection(model_selection=1)
+        self.landmark_detector = mp.solutions.face_mesh.FaceMesh(max_num_faces=1, static_image_mode=True)
 
     def crop_faces_from_image(self, image):
         """
@@ -22,39 +24,54 @@ class NormalisedFaceCropper:
         :return: A list of sub-images containing only the faces.
         """
 
-        detected_landmarks = self.landmark_detector.process(image).multi_face_landmarks
+        detected_faces = self.face_detector.process(image).detections
 
-        if detected_landmarks is None:  # No faces detected
-            return None
-
-        else:
-            face_images = []
+        if detected_faces is not None:
+            normalised_face_images = []
             image_height, image_width = image.shape[:2]
 
-            for face in detected_landmarks:
-                left_eye_centre, right_eye_centre = self.get_left_and_right_eye_centres(
-                    [face.landmark[landmark] for landmark in NormalisedFaceCropper.left_eye_landmark_indices],
-                    [face.landmark[landmark] for landmark in NormalisedFaceCropper.right_eye_landmark_indices],
-                    (image_width, image_height))
-                eyes_midpoint = self.get_eyes_midpoint(left_eye_centre, right_eye_centre, image_height)
+            for face in detected_faces:
+                face_box = face.location_data.relative_bounding_box
+                face_bounds = np.ndarray.astype(np.rint(np.array([
+                    [face_box.xmin * image_width, face_box.ymin * image_height],  # Bottom left
+                    [(face_box.xmin + face_box.width) * image_width, (face_box.ymin + face_box.height) * image_height]])), np.int)  # Top right
 
-                roll_angle = self.get_face_roll_angle(left_eye_centre, right_eye_centre)
-                rotation_matrix = cv2.getRotationMatrix2D(eyes_midpoint, -roll_angle, 1)
-                rotated_landmarks = self.rotate_landmarks(
-                    [face.landmark[landmark] for landmark in NormalisedFaceCropper.face_edge_landmark_indices],
-                    rotation_matrix,
-                    (image_width, image_height))
+                face_image = self.safe_crop_image(
+                    image,
+                    top=face_bounds[0][1],
+                    bottom=face_bounds[1][1],
+                    left=face_bounds[0][0],
+                    right=face_bounds[1][0])
 
-                rotated_image = cv2.warpAffine(image, rotation_matrix, (image.shape[1], image.shape[0]))
-                face_images.append(
-                    self.crop_image(
-                        rotated_image,
-                        top=rotated_landmarks[1, 3],
-                        bottom=rotated_landmarks[1, 1],
-                        left=rotated_landmarks[0, 0],
-                        right=rotated_landmarks[0, 2]))
+                detected_landmarks = self.landmark_detector.process(face_image).multi_face_landmarks
 
-            return face_images
+                if detected_landmarks is not None:
+                    face_height, face_width = face_image.shape[:2]
+                    face = detected_landmarks[0]
+
+                    left_eye_centre, right_eye_centre = self.get_left_and_right_eye_centres(
+                        [face.landmark[landmark] for landmark in NormalisedFaceCropper.left_eye_landmark_indices],
+                        [face.landmark[landmark] for landmark in NormalisedFaceCropper.right_eye_landmark_indices],
+                        (face_width, face_height))
+                    eyes_midpoint = self.get_eyes_midpoint(left_eye_centre, right_eye_centre, face_height)
+
+                    roll_angle = self.get_face_roll_angle(left_eye_centre, right_eye_centre)
+                    rotation_matrix = cv2.getRotationMatrix2D(eyes_midpoint, -roll_angle, 1)
+                    rotated_landmarks = self.rotate_landmarks(
+                        [face.landmark[landmark] for landmark in NormalisedFaceCropper.face_edge_landmark_indices],
+                        rotation_matrix,
+                        (face_width, face_height))
+
+                    rotated_face_image = cv2.warpAffine(face_image, rotation_matrix, (image.shape[1], image.shape[0]))
+                    normalised_face_images.append(
+                        self.safe_crop_image(
+                            rotated_face_image,
+                            top=rotated_landmarks[1, 3],
+                            bottom=rotated_landmarks[1, 1],
+                            left=rotated_landmarks[0, 0],
+                            right=rotated_landmarks[0, 2]))
+
+            return normalised_face_images
 
 
     def get_left_and_right_eye_centres(self, left_eye_landmarks, right_eye_landmarks, image_size):
@@ -145,15 +162,15 @@ class NormalisedFaceCropper:
         return np.ndarray.astype(np.rint(rotated_landmarks), np.int)
 
 
-    def crop_image(self, image, top, bottom, left, right):
+    def safe_crop_image(self, image, top, bottom, left, right):
         """
         Crop the supplied image within the provided boundaries. If a boundary is outside the perimeter of the image, it
         is clipped to the perimeter edge value.
         :param image: The image to be cropped.
-        :param top: The top boundary of the crop.
-        :param bottom: The bottom boundary of the crop.
-        :param left: The left boundary of the crop.
-        :param right: The right boundary of the crop.
+        :param top: Maximum y coordinate of the crop boundary. Must be a row number instead of a height value.
+        :param bottom: Minimum y coordinate of the crop boundary. Must be a row number instead of a height value.
+        :param left: Minimum x coordinate of the crop boundary.
+        :param right: Maximum x coordinate of the crop boundary.
         :return: The cropped image.
         """
 
@@ -169,7 +186,7 @@ class NormalisedFaceCropper:
         if right < 0: right = 0
         elif right >= image.shape[1]: right = image.shape[1] - 1
 
-        return image[top:bottom, left:right]
+        return image[top:bottom, left:right+1]
 
 
 

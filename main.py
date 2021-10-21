@@ -3,6 +3,7 @@ from normalised_face_cropper import NormalisedFaceCropper
 
 normalised_face_cropper = NormalisedFaceCropper()
 camera = cv2.VideoCapture(0, cv2.CAP_DSHOW)  # Capture video with default camera (Use DSHOW API for reading to avoid SourceReader warning)
+# camera = cv2.VideoCapture('C:/Users/Toprak/Desktop/Katy Perry - Waking Up In Vegas (Official).mp4')  # Capture video with default camera (Use DSHOW API for reading to avoid SourceReader warning)
 
 while True:
     read_successful, image = camera.read()
@@ -12,6 +13,7 @@ while True:
     if face_images is None: print("No faces detected!")
     else:
         cv2.imshow('Camera', image)
+        print(len(face_images))
         for face_id, face_image in enumerate(face_images):
             cv2.imshow('Face{0}'.format(face_id), face_image)
 
