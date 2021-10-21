@@ -28,15 +28,9 @@ class NormalisedFaceCropper:
 
         if detected_faces is not None:
             normalised_face_images = []
-            image_height, image_width = image.shape[:2]
 
             for face in detected_faces:
-                face_box = face.location_data.relative_bounding_box
-                face_bounds = np.ndarray.astype(np.rint(np.array([
-                    [face_box.xmin * image_width, face_box.ymin * image_height],  # Bottom left
-                    [(face_box.xmin + face_box.width) * image_width, (face_box.ymin + face_box.height) * image_height]])), np.int)  # Top right
-
-                face_image = self.safe_crop_image(image, face_bounds[0][1], face_bounds[1][1], face_bounds[0][0], face_bounds[1][0])
+                face_image = self.get_face_image(image, face.location_data.relative_bounding_box)
                 detected_landmarks = self.landmark_detector.process(face_image).multi_face_landmarks
 
                 if detected_landmarks is not None:
@@ -62,6 +56,25 @@ class NormalisedFaceCropper:
             return normalised_face_images
 
 
+    def get_face_image(self, image, face_box):
+        """
+        Crop and return the located face in the image. The perimeter of the crop is the bounding box of the face
+        :param image: The image containing the face.
+        :param face_box: The bounding box of the detected face. Must be a
+        mediapipe.framework.formats.location_data_pb2.RelativeBoundingBox object.
+        :return: A sub-image containing only the face.
+        """
+
+        image_height, image_width = image.shape[:2]
+
+        face_bounds = np.ndarray.astype(np.rint(np.array([
+            [face_box.xmin * image_width, face_box.ymin * image_height],  # Bottom left
+            [(face_box.xmin + face_box.width) * image_width, (face_box.ymin + face_box.height) * image_height]])), # Top right
+            np.int)
+
+        return self.safe_crop_image(image, face_bounds[0][1], face_bounds[1][1], face_bounds[0][0], face_bounds[1][0])
+
+
     def get_left_and_right_eye_centres(self, left_eye_landmarks, right_eye_landmarks, image_size):
         """
         Calculate and return the pixel coordinates of the centres of the left and right eyes in the face. The y
@@ -71,7 +84,7 @@ class NormalisedFaceCropper:
         mediapipe.framework.formats.landmark_pb2.NormalizedLandmark objects.
         :param right_eye_landmarks: The landmarks for the right eye. Must be a list of
         mediapipe.framework.formats.landmark_pb2.NormalizedLandmark objects.
-        :param image_size: (width, height) tuple containing the dimensions of the image with the face
+        :param image_size: (width, height) tuple containing the dimensions of the image with the face.
         :return: Two [x, y] integer arrays containing the pixel coordinates of the centres of the left and right eyes respectively.
         """
 

@@ -13,7 +13,6 @@ while True:
     if face_images is None: print("No faces detected!")
     else:
         cv2.imshow('Camera', image)
-        print(len(face_images))
         for face_id, face_image in enumerate(face_images):
             cv2.imshow('Face{0}'.format(face_id), face_image)
 
