@@ -9,6 +9,7 @@ class NormalisedFaceCropper:
     right_eye_landmark_indices = [362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398]
     face_edge_landmark_indices = [234, 152, 454, 10]
 
+
     def __init__(self):
         """
         Initialises a FaceCropper object
@@ -16,6 +17,7 @@ class NormalisedFaceCropper:
 
         self.face_detector = mp.solutions.face_detection.FaceDetection(model_selection=1)
         self.landmark_detector = mp.solutions.face_mesh.FaceMesh(max_num_faces=1, static_image_mode=True)
+
 
     def crop_faces_from_image(self, image):
         """
@@ -44,14 +46,8 @@ class NormalisedFaceCropper:
                     eyes_midpoint = self.get_eyes_midpoint(left_eye_centre, right_eye_centre, face_height)
 
                     roll_angle = self.get_face_roll_angle(left_eye_centre, right_eye_centre)
-                    rotation_matrix = cv2.getRotationMatrix2D((int(eyes_midpoint[0]), int(eyes_midpoint[1])), -roll_angle, 1)
-                    rotated_landmarks = self.rotate_landmarks(
-                        [face.landmark[landmark] for landmark in NormalisedFaceCropper.face_edge_landmark_indices],
-                        rotation_matrix, (face_width, face_height))
-
-                    rotated_face_image = cv2.warpAffine(face_image, rotation_matrix, (image.shape[1], image.shape[0]))
-                    normalised_face_images.append(
-                        self.safe_crop_image(rotated_face_image, rotated_landmarks[1, 3], rotated_landmarks[1, 1], rotated_landmarks[0, 0], rotated_landmarks[0, 2]))
+                    normalised_face_images.append(self.get_normalised_face_image(
+                        face_image, [face.landmark[landmark] for landmark in NormalisedFaceCropper.face_edge_landmark_indices], eyes_midpoint, roll_angle))
 
             return normalised_face_images
 
@@ -190,5 +186,22 @@ class NormalisedFaceCropper:
         return image[top:bottom, left:right+1]
 
 
+    def get_normalised_face_image(self, face_image, face_edge_landmarks, eyes_midpoint, roll_angle):
+        """
+        Normalises the roll of the face in the face image and returns the normalised image.
+        :param face_image: Image containing only the bounding box of the face.
+        :param face_edge_landmarks: The landmarks of the top, bottom, left, and right edges of the face. Must be a list of
+        mediapipe.framework.formats.landmark_pb2.NormalizedLandmark objects.
+        :param eyes_midpoint: [x, y] array containing the pixel coordinates of the midpoint between the left and right eyes
+        of the face.
+        :param roll_angle: The angle at which the face is rolled.
+        :return: A normalised version of the supplied face image.
+        """
 
+        rotation_matrix = cv2.getRotationMatrix2D((int(eyes_midpoint[0]), int(eyes_midpoint[1])), -roll_angle, 1)
+        rotated_landmarks = self.rotate_landmarks(face_edge_landmarks, rotation_matrix, (face_image.shape[1], face_image.shape[0]))
+        rotated_face_image = cv2.warpAffine(face_image, rotation_matrix, (face_image.shape[1], face_image.shape[0]))
+
+        return self.safe_crop_image(rotated_face_image, rotated_landmarks[1, 3], rotated_landmarks[1, 1],
+                                    rotated_landmarks[0, 0], rotated_landmarks[0, 2])
 
