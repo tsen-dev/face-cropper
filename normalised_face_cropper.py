@@ -32,43 +32,72 @@ class NormalisedFaceCropper:
             normalised_face_images = []
 
             for face in detected_faces:
-                face_image = self.get_face_image(image, face.location_data.relative_bounding_box)
+                face_box_inflation = self.get_bounding_box_inflation_factor(face.location_data.relative_keypoints[:2], 1.5, 0.5)
+                face_image = self.get_inflated_face_image(image, face.location_data.relative_bounding_box, face_box_inflation)
                 detected_landmarks = self.landmark_detector.process(face_image).multi_face_landmarks
 
                 if detected_landmarks is not None:
-                    face_height, face_width = face_image.shape[:2]
-                    face = detected_landmarks[0]
+                    face_landmarks = detected_landmarks[0]
 
                     left_eye_centre, right_eye_centre = self.get_left_and_right_eye_centres(
-                        [face.landmark[landmark] for landmark in NormalisedFaceCropper.left_eye_landmark_indices],
-                        [face.landmark[landmark] for landmark in NormalisedFaceCropper.right_eye_landmark_indices],
-                        (face_width, face_height))
-                    eyes_midpoint = self.get_eyes_midpoint(left_eye_centre, right_eye_centre, face_height)
-
+                        [face_landmarks.landmark[landmark] for landmark in NormalisedFaceCropper.left_eye_landmark_indices],
+                        [face_landmarks.landmark[landmark] for landmark in NormalisedFaceCropper.right_eye_landmark_indices],
+                        (face_image.shape[1], face_image.shape[0]))
+                    eyes_midpoint = self.get_eyes_midpoint(left_eye_centre, right_eye_centre, face_image.shape[0])
                     roll_angle = self.get_face_roll_angle(left_eye_centre, right_eye_centre)
+
                     normalised_face_images.append(self.get_normalised_face_image(
-                        face_image, [face.landmark[landmark] for landmark in NormalisedFaceCropper.face_edge_landmark_indices], eyes_midpoint, roll_angle))
+                        face_image, [face_landmarks.landmark[landmark] for landmark in NormalisedFaceCropper.face_edge_landmark_indices], eyes_midpoint, roll_angle))
 
             return normalised_face_images
 
 
-    def get_face_image(self, image, face_box):
+    def get_bounding_box_inflation_factor(self, eye_coordinates, amplification, base_inflation):
         """
-        Crop and return the located face in the image. The perimeter of the crop is the bounding box of the face
+        Calculate and return the factor at which the perimeter of the bounding box of a face should be inflated by. This is calculated
+        as a function of the gradient of the roll of the face.
+        :param eye_coordinates: [left_eye, right_eye] list containing the normalised coordinates of the eyes. Left and right
+        are from the perspective of someone viewing the image, not the subject in the image itself. Must be
+        a list of mediapipe.framework.formats.location_data_pb2.RelativeKeypoint objects.
+        :param amplification: The calculated inflation factor will be multiplied by this value.
+        :param base_inflation: A base inflation to be added to the final inflation factor. Should be a decimal representing
+        a percentage e.g. 0.3 for 30% base inflation.
+        :return: The inflation factor. E.g. returns 0.5 to inflate box perimeter by 50%.
+        """
+
+        gradient = (eye_coordinates[0].y - eye_coordinates[1].y) / (eye_coordinates[0].x - eye_coordinates[1].x)
+        inflation_factor = np.abs(np.degrees(np.arctan(gradient))) / 90
+
+        return (inflation_factor * amplification) + base_inflation
+
+
+    def get_inflated_face_image(self, image, face_box, inflation):
+        """
+        Crop and return the located face in the image. The perimeter of the crop is inflated using the provided inflation factor.
         :param image: The image containing the face.
         :param face_box: The bounding box of the detected face. Must be a
         mediapipe.framework.formats.location_data_pb2.RelativeBoundingBox object.
+        :param inflation: The factor at which the bounding box of a face should be inflated. E.g. 0.5 will inflate the box's
+        area by 50% around the centre.
         :return: A sub-image containing only the face.
         """
 
-        image_height, image_width = image.shape[:2]
+        im = image.copy()
+        cv2.rectangle(im, (round(face_box.xmin * image.shape[1]), round(face_box.ymin * image.shape[0])),
+                      (round((face_box.xmin+face_box.width) * image.shape[1]), round((face_box.ymin+face_box.height) * image.shape[0])), (255, 0, 0))
 
-        face_bounds = np.ndarray.astype(np.rint(np.array([
-            [face_box.xmin * image_width, face_box.ymin * image_height],  # Bottom left
-            [(face_box.xmin + face_box.width) * image_width, (face_box.ymin + face_box.height) * image_height]])), # Top right
+        width_inflation, height_inflation = face_box.width * inflation, face_box.height * inflation
+
+        inflated_face_bounds = np.ndarray.astype(np.rint(np.array([
+            [(face_box.xmin - width_inflation / 2) * image.shape[1], (face_box.ymin - height_inflation / 2) * image.shape[0]],  # (x, y) of bottom left
+            [(face_box.xmin + face_box.width + width_inflation / 2) * image.shape[1], (face_box.ymin + face_box.height + height_inflation / 2) * image.shape[0]]])),  # (x, y) of top right
             np.int)
 
-        return self.safe_crop_image(image, face_bounds[0][1], face_bounds[1][1], face_bounds[0][0], face_bounds[1][0])
+        cv2.rectangle(im, (inflated_face_bounds[0][0], inflated_face_bounds[0][1]),
+                      (inflated_face_bounds[1][0], inflated_face_bounds[1][1]), (0, 255, 0))
+        cv2.imshow("im", im)
+
+        return self.safe_crop_image(image, inflated_face_bounds[0][1], inflated_face_bounds[1][1], inflated_face_bounds[0][0], inflated_face_bounds[1][0])
 
 
     def get_left_and_right_eye_centres(self, left_eye_landmarks, right_eye_landmarks, image_size):
@@ -76,12 +105,15 @@ class NormalisedFaceCropper:
         Calculate and return the pixel coordinates of the centres of the left and right eyes in the face. The y
         coordinate is converted from a row number to a height value so that the y coordinate increases for points higher
         up in the image, instead of decreasing. All values are rounded to the nearest integer.
-        :param left_eye_landmarks: The landmarks for the left eye. Must be a list of
+        :param left_eye_landmarks: The landmarks for the left eye. Left is from the perspective of someone viewing the
+        image, not the subject in the image itself. Must be a list of
         mediapipe.framework.formats.landmark_pb2.NormalizedLandmark objects.
-        :param right_eye_landmarks: The landmarks for the right eye. Must be a list of
+        :param right_eye_landmarks: The landmarks for the right eye. Right is from the perspective of someone viewing the
+        image, not the subject in the image itself. Must be a list of
         mediapipe.framework.formats.landmark_pb2.NormalizedLandmark objects.
         :param image_size: (width, height) tuple containing the dimensions of the image with the face.
         :return: Two [x, y] integer arrays containing the pixel coordinates of the centres of the left and right eyes respectively.
+        Left and right are from the perspective of someone viewing the image, not the subject in the image itself.
         """
 
         left_eye_centre = np.ndarray.astype(np.rint(np.array([
@@ -100,8 +132,10 @@ class NormalisedFaceCropper:
         Calculate and return the coordinates of the midpoint between the two eyes of a face. The y value is converted
         from a row number to a height value so that the y coordinate increases for points higher up in the image,
         instead of decreasing. All values are rounded to the nearest integer.
-        :param left_eye_centre: [x, y] array containing the pixel coordinates of the left eye's centre.
-        :param right_eye_centre: [x, y] array containing the pixel coordinates of the left eye's centre.
+        :param left_eye_centre: [x, y] array containing the pixel coordinates of the left eye's centre. Left is from the
+        perspective of someone viewing the image, not the subject in the image itself.
+        :param right_eye_centre: [x, y] array containing the pixel coordinates of the right eye's centre. Right is from
+        the perspective of someone viewing the image, not the subject in the image itself.
         :param image_height: The height of the image containing the eyes.
         :return: [x, y] integer array containing the pixel coordinates of the midpoint between the left and right eyes.
         """
@@ -111,12 +145,15 @@ class NormalisedFaceCropper:
             image_height - 1 - (left_eye_centre[1] + right_eye_centre[1]) / 2])), np.int)
 
 
-
     def get_face_roll_angle(self, left_eye_centre, right_eye_centre):
         """
         Calculate and return the in-plane rotation angle of a face using the centre coordinates of the eyes.
-        :param left_eye_centre: [x, y] array containing the pixel coordinates of the left eye's centre.
-        :param right_eye_centre: [x, y] array containing the pixel coordinates of the right eye's centre.
+        :param left_eye_centre: [x, y] array containing the pixel coordinates of the left eye's centre. The y value must be a converted
+        height value instead of a row number so that the y coordinate increases for points higher up in the image. Left is from the
+        perspective of someone viewing the image, not the subject in the image itself.
+        :param right_eye_centre: [x, y] array containing the pixel coordinates of the right eye's centre. The y value must be a converted
+        height value instead of a row number so that the y coordinate increases for points higher up in the image. Right is from
+        the perspective of someone viewing the image, not the subject in the image itself.
         :return: The roll angle of the face in degrees.
         """
 
