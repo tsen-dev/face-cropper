@@ -3,6 +3,23 @@ import numpy as np
 import cv2
 
 
+def detection_is_valid(face_box):
+    """
+    Return False if the face detection is invalid i.e. it is (1) entirely outside the bounds of the image, or (2) the area
+    of the bounding box is 0. Otherwise, return True.
+    :param face_box: The bounding box of the detected face. Must be a mediapipe.framework.formats.location_data_pb2.RelativeBoundingBox object.
+    :return: True/False value indicating whether the face detection is valid.
+    """
+
+    if ((face_box.xmin < 0 and face_box.xmin + face_box.width < 0) or
+        (face_box.ymin < 0 and face_box.ymin + face_box.height < 0)) or \
+        (face_box.width == 0 or face_box.height == 0):
+        return False
+
+    else:
+        return True
+
+
 def get_bounding_box_inflation_factor(eye_coordinates, amplification=1.5, base_inflation=0.5):
     """
     Calculate and return the factor at which the perimeter of the bounding box of a face should be inflated by. This is calculated
@@ -220,17 +237,17 @@ class NormalisedFaceCropper:
     def get_normalised_faces(self, image):
         """
         Crop out and normalise each detected face in the image and return a list of face images. Any roll in the faces is
-        reversed before cropping. Return None if no faces are detected in the image, or [] if no landmarks could be detected on any face.
+        reversed before cropping. Return [] if no faces are detected in the image.
         :param image: The image to be cropped. Must be in RGB format.
         :return: A list of RGB sub-images containing only the faces.
         """
 
+        normalised_face_images = []
         detected_faces = self.face_detector.process(image).detections
+        if detected_faces is None: return normalised_face_images
 
-        if detected_faces is not None:
-            normalised_face_images = []
-
-            for face in detected_faces:
+        for face in detected_faces:
+            if detection_is_valid(face.location_data.relative_bounding_box):
                 face_box_inflation = get_bounding_box_inflation_factor(face.location_data.relative_keypoints[:2])
                 face_image = get_inflated_face_image(image, face.location_data.relative_bounding_box, face_box_inflation)
                 detected_landmarks = self.landmark_detector.process(face_image).multi_face_landmarks
@@ -244,11 +261,7 @@ class NormalisedFaceCropper:
                     eyes_midpoint = get_eyes_midpoint(left_eye_centre, right_eye_centre, face_image.shape)
                     roll_angle = get_face_roll_angle(left_eye_centre, right_eye_centre)
 
-                    normalised_face_images.append(get_normalised_face_image(
-                        face_image,
-                        face_landmarks.landmark,
-                        eyes_midpoint,
-                        roll_angle))
+                    normalised_face_images.append(
+                        get_normalised_face_image(face_image, face_landmarks.landmark, eyes_midpoint, roll_angle))
 
-            return normalised_face_images
-
+        return normalised_face_images
