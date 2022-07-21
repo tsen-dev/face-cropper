@@ -201,6 +201,13 @@ class NormalisedFaceCropper:
     right_eye_landmark_indices = [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246]
     face_edge_landmark_indices = [234, 152, 454, 10]
 
+    # face_detector_model_selection values
+    SHORT_RANGE = 0
+    LONG_RANGE = 1
+
+    # landmark_detector_static_image_mode values
+    STATIC_MODE = True
+    VIDEO_MODE = False
 
     def __init__(self, min_face_detector_confidence=0.5, face_detector_model_selection=1, landmark_detector_static_image_mode=True, min_landmark_detector_confidence=0.5):
         """
@@ -211,8 +218,9 @@ class NormalisedFaceCropper:
         See details in https://solutions.mediapipe.dev/face_detection#min_detection_confidence". Defaults to 0.5.
         :param face_detector_model_selection:
         From mp.solutions.face_detection.FaceDetection documentation:
-        "0 or 1. 0 to select a short-range model that works best for faces within 2 meters from the camera, and 1 for a full-range
-        model best for faces within 5 meters. See details in https://solutions.mediapipe.dev/face_detection#model_selection".
+        "0 (NormalisedFaceCropper.SHORT_RANGE) or 1 (NormalisedFaceCropper.LONG_RANGE). 0 to select a short-range model
+        that works best for faces within 2 meters from the camera, and 1 for a full-range model best for faces within 5 meters.
+        See details in https://solutions.mediapipe.dev/face_detection#model_selection".
         1 works well as a general purpose model that detects both close and long range faces, whereas 0 is better for detecting
         close range faces with higher yaw, pitch, or 90+ degree roll. Defaults to 1.
         :param min_landmark_detector_confidence:
@@ -222,8 +230,8 @@ class NormalisedFaceCropper:
         :param landmark_detector_static_image_mode:
         From mp.solutions.face_mesh.FaceMesh documentation:
         "Whether to treat the input images as a batch of static and possibly unrelated images, or a video stream. See details in
-        https://solutions.mediapipe.dev/face_mesh#static_image_mode". Set this to False if the images passed to the detector are
-        from the same sequence, and there is always the same one face in the sequence. Defaults to True.
+        https://solutions.mediapipe.dev/face_mesh#static_image_mode". Set this to False (NormalisedFaceCropper.VIDEO_MODE) if the images passed to the detector are
+        from the same sequence, and there is always the same one face in the sequence. Defaults to True (NormalisedFaceCropper.STATIC_MODE).
         """
 
         self.face_detector = mp.solutions.face_detection.FaceDetection(min_detection_confidence=min_face_detector_confidence,
