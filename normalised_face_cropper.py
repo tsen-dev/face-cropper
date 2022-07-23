@@ -196,11 +196,6 @@ def get_normalised_face_image(face_image, face_landmarks, eyes_midpoint, roll_an
 
 class NormalisedFaceCropper:
 
-    # The indexes at which the relevant landmarks' data is stored on the mp.solutions.face_mesh.FaceMesh model
-    left_eye_landmark_indices = [362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398]
-    right_eye_landmark_indices = [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246]
-    face_edge_landmark_indices = [234, 152, 454, 10]
-
     # face_detector_model_selection values
     SHORT_RANGE = 0
     LONG_RANGE = 1
@@ -208,6 +203,11 @@ class NormalisedFaceCropper:
     # landmark_detector_static_image_mode values
     STATIC_MODE = True
     VIDEO_MODE = False
+
+    # The indexes at which the relevant landmark data is stored on the mp.solutions.face_mesh.FaceMesh model
+    LEFT_EYE_LANDMARK_INDICES = [362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398]
+    RIGHT_EYE_LANDMARK_INDICES = [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246]
+    FACE_EDGE_LANDMARK_INDICES = [234, 152, 454, 10]
 
     def __init__(self, min_face_detector_confidence=0.5, face_detector_model_selection=1, landmark_detector_static_image_mode=True, min_landmark_detector_confidence=0.5):
         """
@@ -264,8 +264,8 @@ class NormalisedFaceCropper:
                     face_landmarks = detected_landmarks[0]
 
                     left_eye_centre, right_eye_centre = get_left_and_right_eye_centres(
-                        [face_landmarks.landmark[landmark] for landmark in NormalisedFaceCropper.left_eye_landmark_indices],
-                        [face_landmarks.landmark[landmark] for landmark in NormalisedFaceCropper.right_eye_landmark_indices])
+                        [face_landmarks.landmark[landmark] for landmark in NormalisedFaceCropper.LEFT_EYE_LANDMARK_INDICES],
+                        [face_landmarks.landmark[landmark] for landmark in NormalisedFaceCropper.RIGHT_EYE_LANDMARK_INDICES])
                     eyes_midpoint = get_eyes_midpoint(left_eye_centre, right_eye_centre, face_image.shape)
                     roll_angle = get_face_roll_angle(left_eye_centre, right_eye_centre)
 
