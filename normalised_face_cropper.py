@@ -195,6 +195,23 @@ def get_normalised_face_image(face_image, face_landmarks, eyes_midpoint, roll_an
 
 
 class NormalisedFaceCropper:
+    """
+    Implements the following pipeline for cropping out faces from an image:
+        1. Retrieves bounding boxes and approximate eye coordinates for faces in the image, using the mp.solutions.face_detection.FaceDetection network
+            - For more about this network, visit https://solutions.mediapipe.dev/face_detection
+        2. For faces with in-plane rotation, the FaceDetection network gives bounding boxes that are much smaller than the face, hence:
+            2.1 The in-plane rotation of a face is found by calculating the angle between the line going through the eye coordinates and the horizontal
+            2.2 The bounding boxes are expanded by a factor relative to the in-plane rotation of the faces, to ensure bounding boxes include the full face under rotation
+        3. The expanded bounding boxes are cropped from the image and passed to the mp.solutions.face_mesh.FaceMesh network to retrieve precise eye coordinates
+            3.1 The retrieved eye coordinates are used to calculate the in-plane rotation angle (like in step 2.1).
+            3.2 The face image is rotated by this angle in the opposite direction, about the midpoint between the eyes, to correct the in-plane rotation (i.e. normalise the face)
+                - The eye coordinates from the mp.solutions.face_detection.FaceDetection network in step 1 are not used for this purpose as they are not
+                  precise enough and are only good enough for getting a rough idea of the rotation in the face
+                - mp.solutions.face_mesh.FaceMesh has an integrated mp.solutions.face_detection.FaceDetection model. However, since the integrated network is configured to only
+                  run the short-range model (see https://solutions.mediapipe.dev/face_detection#model_selection), it can't detect faces further than 2 metres away. Having a
+                  separate mp.solutions.face_detection.FaceDetection model makes the face detection network selection configurable depending on requirements
+            - For more about this network, visit https://solutions.mediapipe.dev/face_mesh
+    """
 
     # face_detector_model_selection values
     SHORT_RANGE = 0
@@ -204,14 +221,14 @@ class NormalisedFaceCropper:
     STATIC_MODE = True
     VIDEO_MODE = False
 
-    # The indexes at which the relevant landmark data is stored on the mp.solutions.face_mesh.FaceMesh model
+    # The indexes at which the relevant landmark data is stored on the mp.solutions.face_mesh.FaceMesh model's output
     LEFT_EYE_LANDMARK_INDICES = [362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398]
     RIGHT_EYE_LANDMARK_INDICES = [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246]
     FACE_EDGE_LANDMARK_INDICES = [234, 152, 454, 10]
 
     def __init__(self, min_face_detector_confidence=0.5, face_detector_model_selection=1, landmark_detector_static_image_mode=True, min_landmark_detector_confidence=0.5):
         """
-        Initialises a FaceCropper object.
+        Initialise a FaceCropper object.
         :param min_face_detector_confidence:
         From mp.solutions.face_detection.FaceDetection documentation:
         "min_detection_confidence: Minimum confidence value ([0.0, 1.0]) for face detection to be considered successful.
@@ -223,15 +240,15 @@ class NormalisedFaceCropper:
         See details in https://solutions.mediapipe.dev/face_detection#model_selection".
         1 works well as a general purpose model that detects both close and long range faces, whereas 0 is better for detecting
         close range faces with higher yaw, pitch, or 90+ degree roll. Defaults to 1.
-        :param min_landmark_detector_confidence:
-        From mp.solutions.face_mesh.FaceMesh documentation:
-        "Minimum confidence value ([0.0, 1.0]) for the face landmarks to be considered tracked successfully. See details in
-        https://solutions.mediapipe.dev/face_mesh#min_tracking_confidence". Defaults to 0.5.
         :param landmark_detector_static_image_mode:
         From mp.solutions.face_mesh.FaceMesh documentation:
         "Whether to treat the input images as a batch of static and possibly unrelated images, or a video stream. See details in
         https://solutions.mediapipe.dev/face_mesh#static_image_mode". Set this to False (NormalisedFaceCropper.VIDEO_MODE) if the images passed to the detector are
         from the same sequence, and there is always the same one face in the sequence. Defaults to True (NormalisedFaceCropper.STATIC_MODE).
+        :param min_landmark_detector_confidence:
+        From mp.solutions.face_mesh.FaceMesh documentation:
+        "Minimum confidence value ([0.0, 1.0]) for the face landmarks to be considered tracked successfully. See details in
+        https://solutions.mediapipe.dev/face_mesh#min_tracking_confidence". Defaults to 0.5.
         """
 
         self.face_detector = mp.solutions.face_detection.FaceDetection(min_detection_confidence=min_face_detector_confidence,
@@ -244,10 +261,10 @@ class NormalisedFaceCropper:
 
     def get_normalised_faces(self, image):
         """
-        Crop out and normalise each detected face in the image and return a list of face images. Any roll in the faces is
-        reversed before cropping. Return [] if no faces are detected in the image.
-        :param image: The image to be cropped. Must be in RGB format.
-        :return: A list of RGB sub-images containing only the faces.
+        Crop out and normalise each detected face in the specified image and return a list of face images.
+        Any roll in the faces is corrected before cropping.
+        :param image: A numpy.ndarray RGB image containing faces to be cropped
+        :return: A list of numpy.ndarray RGB sub-images containing only the normalised faces.
         """
 
         normalised_face_images = []
