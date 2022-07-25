@@ -3,23 +3,6 @@ import numpy as np
 import cv2
 
 
-def detection_is_valid(face_box):
-    """
-    Return False if the face detection is invalid i.e. it is (1) entirely outside the bounds of the image, or (2) the area
-    of the bounding box is 0. Otherwise, return True.
-    :param face_box: The bounding box of the detected face. Must be a mediapipe.framework.formats.location_data_pb2.RelativeBoundingBox object.
-    :return: True/False value indicating whether the face detection is valid.
-    """
-
-    if ((face_box.xmin < 0 and face_box.xmin + face_box.width < 0) or
-        (face_box.ymin < 0 and face_box.ymin + face_box.height < 0)) or \
-        (face_box.width == 0 or face_box.height == 0):
-        return False
-
-    else:
-        return True
-
-
 def get_bounding_box_inflation_factor(eye_coordinates, amplification=1.5, base_inflation=0.5):
     """
     Calculate and return the factor at which the perimeter of the bounding box of a face should be inflated by. This is calculated
@@ -201,8 +184,8 @@ class NormalisedFaceCropper:
             - For more about this network, visit https://solutions.mediapipe.dev/face_detection
         2. For faces with in-plane rotation, the FaceDetection network gives bounding boxes that are much smaller than the face, hence:
             2.1 The in-plane rotation of a face is found by calculating the angle between the line going through the eye coordinates and the horizontal
-            2.2 The bounding boxes are expanded by a factor relative to the in-plane rotation of the faces, to ensure bounding boxes include the full face under rotation
-        3. The expanded bounding boxes are cropped from the image and passed to the mp.solutions.face_mesh.FaceMesh network to retrieve precise eye coordinates
+            2.2 The bounding boxes are inflated by a factor relative to the in-plane rotation of the faces, to ensure bounding boxes include the full face under rotation
+        3. The inflated bounding boxes are cropped from the image and passed to the mp.solutions.face_mesh.FaceMesh network to retrieve precise eye coordinates
             3.1 The retrieved eye coordinates are used to calculate the in-plane rotation angle (like in step 2.1).
             3.2 The face image is rotated by this angle in the opposite direction, about the midpoint between the eyes, to correct the in-plane rotation (i.e. normalise the face)
                 - The eye coordinates from the mp.solutions.face_detection.FaceDetection network in step 1 are not used for this purpose as they are not
@@ -272,7 +255,8 @@ class NormalisedFaceCropper:
         if detected_faces is None: return normalised_face_images
 
         for face in detected_faces:
-            if detection_is_valid(face.location_data.relative_bounding_box):
+            # The mp.solutions.face_detection.FaceDetection network may rarely 'find' a face completely outside the image, so ignore those
+            if 0 <= face.location_data.relative_bounding_box.xmin <= 1 and 0 <= face.location_data.relative_bounding_box.ymin <= 1:
                 face_box_inflation = get_bounding_box_inflation_factor(face.location_data.relative_keypoints[:2])
                 face_image = get_inflated_face_image(image, face.location_data.relative_bounding_box, face_box_inflation)
                 detected_landmarks = self.landmark_detector.process(face_image).multi_face_landmarks
