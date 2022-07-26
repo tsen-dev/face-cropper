@@ -14,19 +14,18 @@ def get_bounding_box_inflation_factor(eye_coordinates, amplification=1.5, base_i
     :return: The inflation factor. E.g. returns 0.5 to inflate box perimeter by 50%.
     """
 
-    gradient = (eye_coordinates[0].y - eye_coordinates[1].y) / (eye_coordinates[0].x - eye_coordinates[1].x)
-    inflation_factor = np.abs(np.degrees(np.arctan(gradient))) / 90
+    roll_angle = get_face_roll_angle([eye_coordinates[1].x, 1 - eye_coordinates[1].y], [eye_coordinates[0].x, 1 - eye_coordinates[0].y])
+    inflation_factor = np.abs(roll_angle) / 90
 
     return (inflation_factor * amplification) + base_inflation
 
 
-def get_inflated_face_image(image, face_box, inflation):
+def inflate_face_image(image, face_box, inflation):
     """
     Crop and return the located face in the image. The perimeter of the crop is inflated around the center using the provided inflation factor.
     :param image: The image containing the face.
-    :param face_box: The bounding box of the detected face. Must be a
-    mediapipe.framework.formats.location_data_pb2.RelativeBoundingBox object.
-    :param inflation: The factor at which the bounding box of a face should be inflated. E.g. 0.5 will inflate the box's perimeter by 50% around the centre.
+    :param face_box: The bounding box of the detected face. Must be a mediapipe.framework.formats.location_data_pb2.RelativeBoundingBox object.
+    :param inflation: The factor by which the bounding box of a face should be inflated. E.g. 0.5 will inflate the box's perimeter by 50% around the centre.
     :return: A sub-image containing only the face.
     """
 
@@ -37,7 +36,7 @@ def get_inflated_face_image(image, face_box, inflation):
         [(face_box.xmin + face_box.width + width_inflation / 2) * image.shape[1], (face_box.ymin + face_box.height + height_inflation / 2) * image.shape[0]]])),  # (x, y) of top right
         np.int)
 
-    return safe_crop_image(image, inflated_face_bounds[0][1], inflated_face_bounds[1][1], inflated_face_bounds[0][0], inflated_face_bounds[1][0])
+    return crop_within_bounds(image, inflated_face_bounds[0][1], inflated_face_bounds[1][1], inflated_face_bounds[0][0], inflated_face_bounds[1][0])
 
 
 def get_left_and_right_eye_centres(left_eye_landmarks, right_eye_landmarks):
@@ -80,7 +79,7 @@ def get_eyes_midpoint(left_eye_centre, right_eye_centre, image_size):
 
 def get_face_roll_angle(left_eye_centre, right_eye_centre):
     """
-    Calculate and return the in-plane rotation angle of a face using the centre coordinates of the eyes.
+    Calculate and return the in-plane rotation angle of a face (in degrees) using the centre coordinates of the eyes.
     :param left_eye_centre: [x, y] array containing the coordinates of the left eye's centre. The y value must be a
     height value such that it is higher for points higher up in the image.
     :param right_eye_centre: [x, y] array containing the pixel coordinates of the right eye's centre. The y value must be a
@@ -127,7 +126,7 @@ def rotate_landmarks(landmarks, rotation_matrix, image_size):
             np.ones(len(landmarks))]))), np.int)
 
 
-def safe_crop_image(image, top, bottom, left, right):
+def crop_within_bounds(image, top, bottom, left, right):
     """
     Crop the supplied image within the provided boundaries. If a boundary is outside the perimeter of the image, it
     is clipped to the perimeter edge value.
@@ -156,27 +155,6 @@ def safe_crop_image(image, top, bottom, left, right):
     return image[top:bottom, left:right+1]
 
 
-def get_normalised_face_image(face_image, face_landmarks, eyes_midpoint, roll_angle):
-    """
-    Normalises the roll of the face in the face image and returns the normalised image.
-    :param face_image: Image containing only the face.
-    :param face_landmarks: The detected landmarks of the face. Must be a list of
-    mediapipe.framework.formats.landmark_pb2.NormalizedLandmark objects.
-    :param eyes_midpoint: [x, y] array containing the pixel coordinates of the midpoint between the left and right eyes
-    of the face.
-    :param roll_angle: The angle at which the face is rolled, in degrees.
-    :return: A normalised version of the supplied face image.
-    """
-
-    rotation_matrix = cv2.getRotationMatrix2D((np.int(eyes_midpoint[0]), np.int(eyes_midpoint[1])), -roll_angle, 1)
-    rotated_landmarks = rotate_landmarks(face_landmarks, rotation_matrix, face_image.shape)
-    rotated_face_image = cv2.warpAffine(face_image, rotation_matrix, (face_image.shape[1], face_image.shape[0]))
-
-    return safe_crop_image(rotated_face_image,
-                           rotated_landmarks[1, np.argmin(rotated_landmarks[1, :])], rotated_landmarks[1, np.argmax(rotated_landmarks[1, :])],
-                           rotated_landmarks[0, np.argmin(rotated_landmarks[0, :])], rotated_landmarks[0, np.argmax(rotated_landmarks[0, :])])
-
-
 class NormalisedFaceCropper:
     """
     Implements the following pipeline for cropping out faces from an image:
@@ -187,13 +165,15 @@ class NormalisedFaceCropper:
             2.2 The bounding boxes are inflated by a factor relative to the in-plane rotation of the faces, to ensure bounding boxes include the full face under rotation
         3. The inflated bounding boxes are cropped from the image and passed to the mp.solutions.face_mesh.FaceMesh network to retrieve precise eye coordinates
             3.1 The retrieved eye coordinates are used to calculate the in-plane rotation angle (like in step 2.1).
-            3.2 The face image is rotated by this angle in the opposite direction, about the midpoint between the eyes, to correct the in-plane rotation (i.e. normalise the face)
+            3.2 The face image (and the landmarks) is rotated by this angle in the opposite direction, about the midpoint between the eyes,
+                to correct the in-plane rotation (i.e. normalise the face)
                 - The eye coordinates from the mp.solutions.face_detection.FaceDetection network in step 1 are not used for this purpose as they are not
                   precise enough and are only good enough for getting a rough idea of the rotation in the face
                 - mp.solutions.face_mesh.FaceMesh has an integrated mp.solutions.face_detection.FaceDetection model. However, since the integrated network is configured to only
                   run the short-range model (see https://solutions.mediapipe.dev/face_detection#model_selection), it can't detect faces further than 2 metres away. Having a
                   separate mp.solutions.face_detection.FaceDetection model makes the face detection network selection configurable depending on requirements
             - For more about this network, visit https://solutions.mediapipe.dev/face_mesh
+        4. The normalised image is cropped within a minimum bounding box containing the landmark coordinates and returned
     """
 
     # face_detector_model_selection values
@@ -257,20 +237,29 @@ class NormalisedFaceCropper:
         for face in detected_faces:
             # The mp.solutions.face_detection.FaceDetection network may rarely 'find' a face completely outside the image, so ignore those
             if 0 <= face.location_data.relative_bounding_box.xmin <= 1 and 0 <= face.location_data.relative_bounding_box.ymin <= 1:
-                face_box_inflation = get_bounding_box_inflation_factor(face.location_data.relative_keypoints[:2])
-                face_image = get_inflated_face_image(image, face.location_data.relative_bounding_box, face_box_inflation)
+                inflation_factor = get_bounding_box_inflation_factor(face.location_data.relative_keypoints[:2])
+                face_image = inflate_face_image(image, face.location_data.relative_bounding_box, inflation_factor)
                 detected_landmarks = self.landmark_detector.process(face_image).multi_face_landmarks
 
                 if detected_landmarks is not None:
-                    face_landmarks = detected_landmarks[0]
+                    face_landmarks = detected_landmarks[0].landmark
 
                     left_eye_centre, right_eye_centre = get_left_and_right_eye_centres(
-                        [face_landmarks.landmark[landmark] for landmark in NormalisedFaceCropper.LEFT_EYE_LANDMARK_INDICES],
-                        [face_landmarks.landmark[landmark] for landmark in NormalisedFaceCropper.RIGHT_EYE_LANDMARK_INDICES])
+                        [face_landmarks[landmark] for landmark in NormalisedFaceCropper.LEFT_EYE_LANDMARK_INDICES],
+                        [face_landmarks[landmark] for landmark in NormalisedFaceCropper.RIGHT_EYE_LANDMARK_INDICES])
                     eyes_midpoint = get_eyes_midpoint(left_eye_centre, right_eye_centre, face_image.shape)
                     roll_angle = get_face_roll_angle(left_eye_centre, right_eye_centre)
 
+                    rotation_matrix = cv2.getRotationMatrix2D((np.int(eyes_midpoint[0]), np.int(eyes_midpoint[1])), -roll_angle, 1)
+                    rotated_landmarks = rotate_landmarks(face_landmarks, rotation_matrix, face_image.shape)
+                    normalised_face_image = cv2.warpAffine(face_image, rotation_matrix, (face_image.shape[1], face_image.shape[0]))
+
                     normalised_face_images.append(
-                        get_normalised_face_image(face_image, face_landmarks.landmark, eyes_midpoint, roll_angle))
+                        crop_within_bounds(
+                            normalised_face_image,
+                            rotated_landmarks[1, np.argmin(rotated_landmarks[1, :])], rotated_landmarks[1, np.argmax(rotated_landmarks[1, :])],
+                            rotated_landmarks[0, np.argmin(rotated_landmarks[0, :])], rotated_landmarks[0, np.argmax(rotated_landmarks[0, :])]
+                        )
+                    )
 
         return normalised_face_images
