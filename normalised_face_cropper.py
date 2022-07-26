@@ -3,7 +3,7 @@ import numpy as np
 import cv2
 
 
-def get_bounding_box_inflation_factor(eye_coordinates, amplification=1.5, base_inflation=0.5):
+def _get_bounding_box_inflation_factor(eye_coordinates, amplification=1.5, base_inflation=0.5):
     """
     Calculate and return the factor at which the perimeter of the bounding box of a face should be inflated by. This is calculated
     as a function of the gradient of the line going through the left and right eyes.
@@ -14,13 +14,13 @@ def get_bounding_box_inflation_factor(eye_coordinates, amplification=1.5, base_i
     :return: The inflation factor. E.g. returns 0.5 to inflate box perimeter by 50%.
     """
 
-    roll_angle = get_face_roll_angle([eye_coordinates[1].x, 1 - eye_coordinates[1].y], [eye_coordinates[0].x, 1 - eye_coordinates[0].y])
+    roll_angle = _get_face_roll_angle([eye_coordinates[1].x, 1 - eye_coordinates[1].y], [eye_coordinates[0].x, 1 - eye_coordinates[0].y])
     inflation_factor = np.abs(roll_angle) / 90
 
     return (inflation_factor * amplification) + base_inflation
 
 
-def inflate_face_image(image, face_box, inflation):
+def _inflate_face_image(image, face_box, inflation):
     """
     Crop and return the located face in the image. The perimeter of the crop is inflated around the center using the provided inflation factor.
     :param image: The image containing the face.
@@ -36,10 +36,10 @@ def inflate_face_image(image, face_box, inflation):
         [(face_box.xmin + face_box.width + width_inflation / 2) * image.shape[1], (face_box.ymin + face_box.height + height_inflation / 2) * image.shape[0]]])),  # (x, y) of top right
         np.int)
 
-    return crop_within_bounds(image, inflated_face_bounds[0][1], inflated_face_bounds[1][1], inflated_face_bounds[0][0], inflated_face_bounds[1][0])
+    return _crop_within_bounds(image, inflated_face_bounds[0][1], inflated_face_bounds[1][1], inflated_face_bounds[0][0], inflated_face_bounds[1][0])
 
 
-def get_left_and_right_eye_centres(left_eye_landmarks, right_eye_landmarks):
+def _get_left_and_right_eye_centres(left_eye_landmarks, right_eye_landmarks):
     """
     Calculate and return the normalised coordinates of the centres of the left and right eyes in the face. The y
     coordinate is converted from a row number to a height value so that the y coordinate increases for points higher up in the image.
@@ -61,7 +61,7 @@ def get_left_and_right_eye_centres(left_eye_landmarks, right_eye_landmarks):
     return left_eye_centre, right_eye_centre
 
 
-def get_eyes_midpoint(left_eye_centre, right_eye_centre, image_size):
+def _get_eyes_midpoint(left_eye_centre, right_eye_centre, image_size):
     """
     Calculate and return the pixel coordinates of the midpoint between the two eyes of a face. All values are rounded to the nearest integer.
     :param left_eye_centre: [x, y] array containing the normalised coordinates of the left eye's centre. The y
@@ -77,7 +77,7 @@ def get_eyes_midpoint(left_eye_centre, right_eye_centre, image_size):
         (left_eye_centre[1] + right_eye_centre[1]) * image_size[0] / 2])), np.int)
 
 
-def get_face_roll_angle(left_eye_centre, right_eye_centre):
+def _get_face_roll_angle(left_eye_centre, right_eye_centre):
     """
     Calculate and return the in-plane rotation angle of a face (in degrees) using the centre coordinates of the eyes.
     :param left_eye_centre: [x, y] array containing the coordinates of the left eye's centre. The y value must be a
@@ -107,7 +107,7 @@ def get_face_roll_angle(left_eye_centre, right_eye_centre):
             return 180 + np.degrees(np.arctan(gradient))  # Roll between 90 and 270 degrees
 
 
-def rotate_landmarks(landmarks, rotation_matrix, image_size):
+def _rotate_landmarks(landmarks, rotation_matrix, image_size):
     """
     Rotate the landmark points using the specified rotation matrix. The new points are rounded to the nearest
     values and converted to integer types.
@@ -126,7 +126,7 @@ def rotate_landmarks(landmarks, rotation_matrix, image_size):
             np.ones(len(landmarks))]))), np.int)
 
 
-def crop_within_bounds(image, top, bottom, left, right):
+def _crop_within_bounds(image, top, bottom, left, right):
     """
     Crop the supplied image within the provided boundaries. If a boundary is outside the perimeter of the image, it
     is clipped to the perimeter edge value.
@@ -185,9 +185,9 @@ class NormalisedFaceCropper:
     VIDEO_MODE = False
 
     # The indexes at which the relevant landmark data is stored on the mp.solutions.face_mesh.FaceMesh model's output
-    LEFT_EYE_LANDMARK_INDICES = [362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398]
-    RIGHT_EYE_LANDMARK_INDICES = [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246]
-    FACE_EDGE_LANDMARK_INDICES = [234, 152, 454, 10]
+    _LEFT_EYE_LANDMARK_INDICES = [362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398]
+    _RIGHT_EYE_LANDMARK_INDICES = [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246]
+    _FACE_EDGE_LANDMARK_INDICES = [234, 152, 454, 10]
 
     def __init__(self, min_face_detector_confidence=0.5, face_detector_model_selection=1, landmark_detector_static_image_mode=True, min_landmark_detector_confidence=0.5):
         """
@@ -237,25 +237,25 @@ class NormalisedFaceCropper:
         for face in detected_faces:
             # The mp.solutions.face_detection.FaceDetection network may rarely 'find' a face completely outside the image, so ignore those
             if 0 <= face.location_data.relative_bounding_box.xmin <= 1 and 0 <= face.location_data.relative_bounding_box.ymin <= 1:
-                inflation_factor = get_bounding_box_inflation_factor(face.location_data.relative_keypoints[:2])
-                face_image = inflate_face_image(image, face.location_data.relative_bounding_box, inflation_factor)
+                inflation_factor = _get_bounding_box_inflation_factor(face.location_data.relative_keypoints[:2])
+                face_image = _inflate_face_image(image, face.location_data.relative_bounding_box, inflation_factor)
                 detected_landmarks = self.landmark_detector.process(face_image).multi_face_landmarks
 
                 if detected_landmarks is not None:
                     face_landmarks = detected_landmarks[0].landmark
 
-                    left_eye_centre, right_eye_centre = get_left_and_right_eye_centres(
-                        [face_landmarks[landmark] for landmark in NormalisedFaceCropper.LEFT_EYE_LANDMARK_INDICES],
-                        [face_landmarks[landmark] for landmark in NormalisedFaceCropper.RIGHT_EYE_LANDMARK_INDICES])
-                    eyes_midpoint = get_eyes_midpoint(left_eye_centre, right_eye_centre, face_image.shape)
-                    roll_angle = get_face_roll_angle(left_eye_centre, right_eye_centre)
+                    left_eye_centre, right_eye_centre = _get_left_and_right_eye_centres(
+                        [face_landmarks[landmark] for landmark in NormalisedFaceCropper._LEFT_EYE_LANDMARK_INDICES],
+                        [face_landmarks[landmark] for landmark in NormalisedFaceCropper._RIGHT_EYE_LANDMARK_INDICES])
+                    eyes_midpoint = _get_eyes_midpoint(left_eye_centre, right_eye_centre, face_image.shape)
+                    roll_angle = _get_face_roll_angle(left_eye_centre, right_eye_centre)
 
                     rotation_matrix = cv2.getRotationMatrix2D((np.int(eyes_midpoint[0]), np.int(eyes_midpoint[1])), -roll_angle, 1)
-                    rotated_landmarks = rotate_landmarks(face_landmarks, rotation_matrix, face_image.shape)
+                    rotated_landmarks = _rotate_landmarks(face_landmarks, rotation_matrix, face_image.shape)
                     normalised_face_image = cv2.warpAffine(face_image, rotation_matrix, (face_image.shape[1], face_image.shape[0]))
 
                     normalised_face_images.append(
-                        crop_within_bounds(
+                        _crop_within_bounds(
                             normalised_face_image,
                             rotated_landmarks[1, np.argmin(rotated_landmarks[1, :])], rotated_landmarks[1, np.argmax(rotated_landmarks[1, :])],
                             rotated_landmarks[0, np.argmin(rotated_landmarks[0, :])], rotated_landmarks[0, np.argmax(rotated_landmarks[0, :])]
