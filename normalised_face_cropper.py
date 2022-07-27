@@ -131,7 +131,7 @@ def _rotate_landmarks(landmarks, rotation_matrix, image_size):
 def _crop_within_bounds(image, top, bottom, left, right):
     """
     Crop the supplied image within the provided boundaries. If a boundary is outside the perimeter of the image, it
-    is clipped to the perimeter edge value.
+    is clipped to the perimeter edge value. All edge parameters are inclusive
     :param image: The image to be cropped.
     :param top: Maximum integer y coordinate of the crop boundary. Must be a row number instead of a height value such
     that it is lower for points higher up in the image.
@@ -154,7 +154,7 @@ def _crop_within_bounds(image, top, bottom, left, right):
     if right < 0: right = 0
     elif right >= image.shape[1]: right = image.shape[1] - 1
 
-    return image[top:bottom, left:right+1]
+    return image[top:bottom+1, left:right+1]
 
 
 class NormalisedFaceCropper:
