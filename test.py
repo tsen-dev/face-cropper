@@ -33,10 +33,7 @@ class TestNormalisedFaceCropper(unittest.TestCase):
                 self.ymin = ymin
                 self.height = height
 
-            def __eq__(self, other):
-                return (
-                    self.xmin == other.xmin and
-                    self.width == other.width and
-                    self.ymin == other.ymin and
-                    self.height == other.height
-                )
+        image = np.array([i for i in range(50 * 100)]).reshape((50, 100))
+
+        self.assertEqual(np.array_equal(normalised_face_cropper._inflate_face_image(image, FaceBox(0.50, 0.25, 0.50, 0.25), 0),image[25:38+1, 50:75+1]), True)
+        self.assertEqual(np.array_equal(normalised_face_cropper._inflate_face_image(image, FaceBox(0.50, 0.25, 0.50, 0.25), 1), image[19:44+1, 38:88+1]), True)

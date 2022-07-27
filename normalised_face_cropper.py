@@ -32,12 +32,13 @@ def _inflate_face_image(image, face_box, inflation):
 
     width_inflation, height_inflation = face_box.width * inflation, face_box.height * inflation
 
-    inflated_face_bounds = np.ndarray.astype(np.rint(np.array([
-        [(face_box.xmin - width_inflation / 2) * image.shape[1], (face_box.ymin - height_inflation / 2) * image.shape[0]],  # (x, y) of bottom left
-        [(face_box.xmin + face_box.width + width_inflation / 2) * image.shape[1], (face_box.ymin + face_box.height + height_inflation / 2) * image.shape[0]]])),  # (x, y) of top right
-        np.int)
-
-    return _crop_within_bounds(image, inflated_face_bounds[0][1], inflated_face_bounds[1][1], inflated_face_bounds[0][0], inflated_face_bounds[1][0])
+    return _crop_within_bounds(
+        image,
+        round((face_box.ymin - height_inflation / 2) * image.shape[0]),                    # top
+        round((face_box.ymin + face_box.height + height_inflation / 2) * image.shape[0]),  # bottom
+        round((face_box.xmin - width_inflation / 2) * image.shape[1]),                     # left
+        round((face_box.xmin + face_box.width + width_inflation / 2) * image.shape[1])     # right
+    )
 
 
 def _get_left_and_right_eye_centres(left_eye_landmarks, right_eye_landmarks):
