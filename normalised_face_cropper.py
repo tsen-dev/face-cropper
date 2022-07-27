@@ -15,6 +15,7 @@ def _get_bounding_box_inflation_factor(eye_coordinates, amplification=1.5, base_
     """
 
     roll_angle = _get_face_roll_angle([eye_coordinates[1].x, 1 - eye_coordinates[1].y], [eye_coordinates[0].x, 1 - eye_coordinates[0].y])
+    print(roll_angle)
     inflation_factor = np.abs(roll_angle) / 90
 
     return (inflation_factor * amplification) + base_inflation
@@ -80,11 +81,12 @@ def _get_eyes_midpoint(left_eye_centre, right_eye_centre, image_size):
 def _get_face_roll_angle(left_eye_centre, right_eye_centre):
     """
     Calculate and return the in-plane rotation angle of a face (in degrees) using the centre coordinates of the eyes.
+    (Assumes the image has been flipped i.e. the left eye is on the right of the image and vice versa)
     :param left_eye_centre: [x, y] array containing the coordinates of the left eye's centre. The y value must be a
     height value such that it is higher for points higher up in the image.
     :param right_eye_centre: [x, y] array containing the pixel coordinates of the right eye's centre. The y value must be a
     height value such that it is higher for points higher up in the image.
-    :return: The roll angle of the face in degrees.
+    :return: The roll angle of the face in degrees (Angles with magnitude 90 or below are given as anticlockwise: +ve, clockwise: -ve. Larger angles are only given as clockwise: +ve).
     """
 
     if right_eye_centre[1] == left_eye_centre[1]:  # 0 or 180 degree roll
@@ -93,18 +95,18 @@ def _get_face_roll_angle(left_eye_centre, right_eye_centre):
         else:
             return 180
 
-    elif right_eye_centre[0] == left_eye_centre[0]:  # 90 or 270 degree roll
+    elif right_eye_centre[0] == left_eye_centre[0]:  # 90 or 270 (-90) degree roll
         if left_eye_centre[1] > right_eye_centre[1]:
             return 90
         else:
-            return 270
+            return -90
 
     else:  # Roll between 0 and 360 degrees excluding 0, 90, and 270
         gradient = (left_eye_centre[1] - right_eye_centre[1]) / (left_eye_centre[0] - right_eye_centre[0])
         if left_eye_centre[0] > right_eye_centre[0]:
-            return np.degrees(np.arctan(gradient))  # Roll between 0 and 90 or 270 and 0 i.e. -90 and 0 degrees
+            return np.degrees(np.arctan(gradient))  # Roll between 0 and 90 or 270 (-90) and 0
         else:
-            return 180 + np.degrees(np.arctan(gradient))  # Roll between 90 and 270 degrees
+            return 180 + np.degrees(np.arctan(gradient))  # Roll between 90 and 270 (-90) degrees
 
 
 def _rotate_landmarks(landmarks, rotation_matrix, image_size):
