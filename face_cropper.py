@@ -20,7 +20,7 @@ def _get_bounding_box_inflation_factor(eye_coordinates, amplification=2, base_in
     return base_inflation + (inflation_factor * amplification)
 
 
-def _inflate_face_image(image, face_box, inflation):
+def _get_inflated_face_image(image, face_box, inflation):
     """
     Crop and return the located face in the image. The perimeter of the crop is inflated around the center using the provided inflation factor.
     :param image: The image containing the face.
@@ -48,7 +48,7 @@ def _get_left_and_right_eye_centres(left_eye_landmarks, right_eye_landmarks):
     mediapipe.framework.formats.landmark_pb2.NormalizedLandmark objects.
     :param right_eye_landmarks: The landmarks for the right eye. Must be a list of
     mediapipe.framework.formats.landmark_pb2.NormalizedLandmark objects.
-    :return: Two [x, y] arrays containing the normalised coordinates of the centres of the left and right eyes respectively.
+    :return: ([l_x, l_y], [r_x, r_y]) tuple of two numpy arrays containing the normalised coordinates of the centres of the left and right eyes respectively.
     """
 
     left_eye_centre = np.array([
@@ -70,7 +70,7 @@ def _get_eyes_midpoint(left_eye_centre, right_eye_centre, image_size):
     :param right_eye_centre: [x, y] array containing the normalised coordinates of the right eye's centre. The y
     coordinate must be a height value such that the y coordinate increases for points higher up in the image.
     :param image_size: (height, width) tuple containing the dimensions of the image with the face.
-    :return: [x, y] integer array containing the pixel coordinates of the midpoint between the left and right eyes.
+    :return: [x, y] integer numpy array containing the pixel coordinates of the midpoint between the left and right eyes.
     """
 
     return np.ndarray.astype(np.rint(np.array([
@@ -117,9 +117,9 @@ def _rotate_landmarks(landmarks, rotation_matrix, image_size):
     mediapipe.framework.formats.landmark_pb2.NormalizedLandmark objects.
     :param rotation_matrix: 3x2 transformation matrix for rotation around a specified point, by a specified angle.
     :param image_size: (height, width) tuple containing the dimensions of the image containing the landmarks.
-    :return: A 2xn integer matrix where n is the number of landmarks. The first row contains the new x values while
-    the second row contains the new y values. Each column contains the new coordinates for a landmark such that the
-    first column stores the first landmark's new location, and so on.
+    :return: A 2xn integer numpy matrix where n is the number of landmarks. The first row contains the new x values while
+    the second row contains the new y values. Each column contains the new coordinates for a landmark such that the first
+    column stores the first landmark's new location, and so on.
     """
 
     return np.ndarray.astype(np.rint(np.matmul(rotation_matrix, np.array([
@@ -224,24 +224,24 @@ class FaceCropper:
                                                                  min_detection_confidence=min_landmark_detector_confidence)
 
 
-    def get_normalised_faces(self, image):
+    def get_faces(self, image):
         """
-        Crop out and normalise each detected face in the specified image and return a list of face images.
-        Any roll in the faces is corrected before cropping.
+        Crop out and correct the roll of each detected face in the specified image and return them in a list.
         :param image: A numpy.ndarray RGB image containing faces to be cropped
-        :return: A list of numpy.ndarray RGB sub-images containing only the normalised faces.
+        :return: A list of numpy.ndarray RGB images containing cropped and roll-corrected faces.
         """
 
-        normalised_face_images = []
+        face_images = []
+
         detected_faces = self.face_detector.process(image).detections
-        if detected_faces is None: return normalised_face_images
+        if detected_faces is None: return face_images
 
         for face in detected_faces:
             # The mp.solutions.face_detection.FaceDetection network may rarely 'find' a face completely outside the image, so ignore those
             if 0 <= face.location_data.relative_bounding_box.xmin <= 1 and 0 <= face.location_data.relative_bounding_box.ymin <= 1:
                 inflation_factor = _get_bounding_box_inflation_factor(face.location_data.relative_keypoints[:2])
-                face_image = _inflate_face_image(image, face.location_data.relative_bounding_box, inflation_factor)
-                detected_landmarks = self.landmark_detector.process(face_image).multi_face_landmarks
+                inflated_face_image = _get_inflated_face_image(image, face.location_data.relative_bounding_box, inflation_factor)
+                detected_landmarks = self.landmark_detector.process(inflated_face_image).multi_face_landmarks
 
                 if detected_landmarks is not None:
                     face_landmarks = detected_landmarks[0].landmark
@@ -249,19 +249,19 @@ class FaceCropper:
                     left_eye_centre, right_eye_centre = _get_left_and_right_eye_centres(
                         [face_landmarks[landmark] for landmark in FaceCropper._LEFT_EYE_LANDMARK_INDICES],
                         [face_landmarks[landmark] for landmark in FaceCropper._RIGHT_EYE_LANDMARK_INDICES])
-                    eyes_midpoint = _get_eyes_midpoint(left_eye_centre, right_eye_centre, face_image.shape)
+                    eyes_midpoint = _get_eyes_midpoint(left_eye_centre, right_eye_centre, inflated_face_image.shape)
                     roll_angle = _get_face_roll_angle(left_eye_centre, right_eye_centre)
 
                     rotation_matrix = cv2.getRotationMatrix2D((np.int(eyes_midpoint[0]), np.int(eyes_midpoint[1])), -roll_angle, 1)
-                    rotated_landmarks = _rotate_landmarks(face_landmarks, rotation_matrix, face_image.shape)
-                    normalised_face_image = cv2.warpAffine(face_image, rotation_matrix, (face_image.shape[1], face_image.shape[0]))
+                    rotated_landmarks = _rotate_landmarks(face_landmarks, rotation_matrix, inflated_face_image.shape)
+                    corrected_face_image = cv2.warpAffine(inflated_face_image, rotation_matrix, (inflated_face_image.shape[1], inflated_face_image.shape[0]))
 
-                    normalised_face_images.append(
+                    face_images.append(
                         _crop_within_bounds(
-                            normalised_face_image,
+                            corrected_face_image,
                             rotated_landmarks[1, np.argmin(rotated_landmarks[1, :])], rotated_landmarks[1, np.argmax(rotated_landmarks[1, :])],
                             rotated_landmarks[0, np.argmin(rotated_landmarks[0, :])], rotated_landmarks[0, np.argmax(rotated_landmarks[0, :])]
                         )
                     )
 
-        return normalised_face_images
+        return face_images

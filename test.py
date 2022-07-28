@@ -4,7 +4,7 @@ import numpy as np
 import cv2
 
 
-class TestNormalisedFaceCropper(unittest.TestCase):
+class TestFaceCropper(unittest.TestCase):
     def test__get_face_roll_angle(self):
         self.assertEqual(face_cropper._get_face_roll_angle([1, 0], [0, 0]), 0)
         self.assertEqual(face_cropper._get_face_roll_angle([0, 1], [0, 0]), 90)
@@ -26,7 +26,7 @@ class TestNormalisedFaceCropper(unittest.TestCase):
         self.assertEqual(np.array_equal(face_cropper._crop_within_bounds(image, -25, 25, -50, 50), image[:25 + 1, :50 + 1]), True)
         self.assertEqual(np.array_equal(face_cropper._crop_within_bounds(image, -25, 25, 50, 150), image[:25 + 1, 50:]), True)
 
-    def test__inflate_face_image(self):
+    def test__get_inflated_face_image(self):
         class FaceBox:
             def __init__(self, xmin, width, ymin, height):
                 self.xmin = xmin
@@ -36,8 +36,8 @@ class TestNormalisedFaceCropper(unittest.TestCase):
 
         image = np.array([i for i in range(50 * 100)]).reshape((50, 100))
 
-        self.assertEqual(np.array_equal(face_cropper._inflate_face_image(image, FaceBox(0.50, 0.25, 0.50, 0.25), 0), image[25:38 + 1, 50:75 + 1]), True)
-        self.assertEqual(np.array_equal(face_cropper._inflate_face_image(image, FaceBox(0.50, 0.25, 0.50, 0.25), 1), image[19:44 + 1, 38:88 + 1]), True)
+        self.assertEqual(np.array_equal(face_cropper._get_inflated_face_image(image, FaceBox(0.50, 0.25, 0.50, 0.25), 0), image[25:38 + 1, 50:75 + 1]), True)
+        self.assertEqual(np.array_equal(face_cropper._get_inflated_face_image(image, FaceBox(0.50, 0.25, 0.50, 0.25), 1), image[19:44 + 1, 38:88 + 1]), True)
 
     def test__get_left_and_right_eye_centres(self):
         class Landmark:
