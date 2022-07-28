@@ -3,22 +3,21 @@ import numpy as np
 import cv2
 
 
-def _get_bounding_box_inflation_factor(eye_coordinates, amplification=1.5, base_inflation=0.5):
+def _get_bounding_box_inflation_factor(eye_coordinates, amplification=2, base_inflation=1):
     """
     Calculate and return the factor at which the perimeter of the bounding box of a face should be inflated by. This is calculated
     as a function of the gradient of the line going through the left and right eyes.
     :param eye_coordinates: [right_eye, left_eye] list containing the normalised coordinates of the eyes. Must be
     a list of mediapipe.framework.formats.location_data_pb2.RelativeKeypoint objects.
-    :param amplification: The calculated inflation factor will be multiplied by this value. Defaults to 1.5.
-    :param base_inflation: A base inflation to be added to the final inflation factor. defaults to 0.3 for 30% base inflation.
+    :param amplification: The calculated inflation factor will be multiplied by this value. Defaults to 2.
+    :param base_inflation: A base inflation to be added to the final inflation factor. defaults to 1 for 100% base inflation.
     :return: The inflation factor. E.g. returns 0.5 to inflate box perimeter by 50%.
     """
 
     roll_angle = _get_face_roll_angle([eye_coordinates[1].x, 1 - eye_coordinates[1].y], [eye_coordinates[0].x, 1 - eye_coordinates[0].y])
-    print(roll_angle)
     inflation_factor = np.abs(roll_angle) / 90
 
-    return (inflation_factor * amplification) + base_inflation
+    return base_inflation + (inflation_factor * amplification)
 
 
 def _inflate_face_image(image, face_box, inflation):
@@ -158,7 +157,7 @@ def _crop_within_bounds(image, top, bottom, left, right):
     return image[top:bottom+1, left:right+1]
 
 
-class NormalisedFaceCropper:
+class FaceCropper:
     """
     Implements the following pipeline for cropping out faces from an image:
         1. Retrieves bounding boxes and approximate eye coordinates for faces in the image, using the mp.solutions.face_detection.FaceDetection network
@@ -185,14 +184,14 @@ class NormalisedFaceCropper:
 
     # landmark_detector_static_image_mode values
     STATIC_MODE = True
-    VIDEO_MODE = False
+    TRACKING_MODE = False
 
     # The indexes at which the relevant landmark data is stored on the mp.solutions.face_mesh.FaceMesh model's output
     _LEFT_EYE_LANDMARK_INDICES = [362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398]
     _RIGHT_EYE_LANDMARK_INDICES = [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246]
-    _FACE_EDGE_LANDMARK_INDICES = [234, 152, 454, 10]
 
-    def __init__(self, min_face_detector_confidence=0.5, face_detector_model_selection=1, landmark_detector_static_image_mode=True, min_landmark_detector_confidence=0.5):
+    def __init__(self, min_face_detector_confidence=0.5, face_detector_model_selection=LONG_RANGE,
+                 landmark_detector_static_image_mode=STATIC_MODE, min_landmark_detector_confidence=0.5):
         """
         Initialise a FaceCropper object.
         :param min_face_detector_confidence:
@@ -201,7 +200,7 @@ class NormalisedFaceCropper:
         See details in https://solutions.mediapipe.dev/face_detection#min_detection_confidence". Defaults to 0.5.
         :param face_detector_model_selection:
         From mp.solutions.face_detection.FaceDetection documentation:
-        "0 (NormalisedFaceCropper.SHORT_RANGE) or 1 (NormalisedFaceCropper.LONG_RANGE). 0 to select a short-range model
+        "0 (FaceCropper.SHORT_RANGE) or 1 (FaceCropper.LONG_RANGE). 0 to select a short-range model
         that works best for faces within 2 meters from the camera, and 1 for a full-range model best for faces within 5 meters.
         See details in https://solutions.mediapipe.dev/face_detection#model_selection".
         1 works well as a general purpose model that detects both close and long range faces, whereas 0 is better for detecting
@@ -209,8 +208,8 @@ class NormalisedFaceCropper:
         :param landmark_detector_static_image_mode:
         From mp.solutions.face_mesh.FaceMesh documentation:
         "Whether to treat the input images as a batch of static and possibly unrelated images, or a video stream. See details in
-        https://solutions.mediapipe.dev/face_mesh#static_image_mode". Set this to False (NormalisedFaceCropper.VIDEO_MODE) if the images passed to the detector are
-        from the same sequence, and there is always the same one face in the sequence. Defaults to True (NormalisedFaceCropper.STATIC_MODE).
+        https://solutions.mediapipe.dev/face_mesh#static_image_mode". Set this to False (FaceCropper.TRACKING_MODE) if the images passed to the detector are
+        from the same sequence, and there is always the same one face in the sequence. Defaults to True (FaceCropper.STATIC_MODE).
         :param min_landmark_detector_confidence:
         From mp.solutions.face_mesh.FaceMesh documentation:
         "Minimum confidence value ([0.0, 1.0]) for the face landmarks to be considered tracked successfully. See details in
@@ -248,8 +247,8 @@ class NormalisedFaceCropper:
                     face_landmarks = detected_landmarks[0].landmark
 
                     left_eye_centre, right_eye_centre = _get_left_and_right_eye_centres(
-                        [face_landmarks[landmark] for landmark in NormalisedFaceCropper._LEFT_EYE_LANDMARK_INDICES],
-                        [face_landmarks[landmark] for landmark in NormalisedFaceCropper._RIGHT_EYE_LANDMARK_INDICES])
+                        [face_landmarks[landmark] for landmark in FaceCropper._LEFT_EYE_LANDMARK_INDICES],
+                        [face_landmarks[landmark] for landmark in FaceCropper._RIGHT_EYE_LANDMARK_INDICES])
                     eyes_midpoint = _get_eyes_midpoint(left_eye_centre, right_eye_centre, face_image.shape)
                     roll_angle = _get_face_roll_angle(left_eye_centre, right_eye_centre)
 
