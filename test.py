@@ -1,6 +1,7 @@
 import unittest
 import normalised_face_cropper
 import numpy as np
+import cv2
 
 
 class TestNormalisedFaceCropper(unittest.TestCase):
@@ -73,3 +74,41 @@ class TestNormalisedFaceCropper(unittest.TestCase):
         self.assertEqual(np.array_equal(normalised_face_cropper._get_eyes_midpoint([0.25, 0.25], [0.75, 0.75], (100, 200)), np.array([100, 50])), True)
         self.assertEqual(np.array_equal(normalised_face_cropper._get_eyes_midpoint([-0.25, -0.25], [0.75, 0.75], (100, 200)), np.array([50, 25])), True)
         self.assertEqual(np.array_equal(normalised_face_cropper._get_eyes_midpoint([0.25, 0.25], [1.25, 1.25], (100, 200)), np.array([150, 75])), True)
+
+    def test__rotate_landmarks(self):
+        class Landmark:
+            def __init__(self, x, y):
+                self.x = x
+                self.y = y
+
+        image = np.array([i for i in range(100 * 200)]).reshape((100, 200))
+
+        self.assertEqual(
+            np.array_equal(
+                normalised_face_cropper._rotate_landmarks([Landmark(0.5, 0.5), Landmark(0.5, 0.25)], cv2.getRotationMatrix2D((100, 50), 0, 1), (100, 200)),
+                np.column_stack(([100, 50], [100, 25]))
+            ),
+            True
+        )
+        self.assertEqual(
+            np.array_equal(
+                normalised_face_cropper._rotate_landmarks([Landmark(0.5, 0.5), Landmark(0.5, 0.25)], cv2.getRotationMatrix2D((100, 50), 90, 1), (100, 200)),
+                np.column_stack(([100, 50], [75, 50]))
+            ),
+            True
+        )
+        self.assertEqual(
+            np.array_equal(
+                normalised_face_cropper._rotate_landmarks([Landmark(0.5, 0.5), Landmark(0.5, 0.25)], cv2.getRotationMatrix2D((100, 50), -90, 1), (100, 200)),
+                np.column_stack(([100, 50], [125, 50]))
+            ),
+            True
+        )
+        self.assertEqual(
+            np.array_equal(
+                normalised_face_cropper._rotate_landmarks([Landmark(0.25, 0.5), Landmark(0.5, 0.25)], cv2.getRotationMatrix2D((100, 50), 180, 1), (100, 200)),
+                np.column_stack(([150, 50], [100, 75]))
+            ),
+            True
+        )
+
