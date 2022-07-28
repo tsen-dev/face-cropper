@@ -38,7 +38,35 @@ class TestNormalisedFaceCropper(unittest.TestCase):
         self.assertEqual(np.array_equal(normalised_face_cropper._inflate_face_image(image, FaceBox(0.50, 0.25, 0.50, 0.25), 0),image[25:38+1, 50:75+1]), True)
         self.assertEqual(np.array_equal(normalised_face_cropper._inflate_face_image(image, FaceBox(0.50, 0.25, 0.50, 0.25), 1), image[19:44+1, 38:88+1]), True)
 
-    # def test__get_left_and_right_eye_centres(self):
+    def test__get_left_and_right_eye_centres(self):
+        class Landmark:
+            def __init__(self, x, y):
+                self.x = x
+                self.y = y
+
+        self.assertEqual(
+            np.array_equal(
+                normalised_face_cropper._get_left_and_right_eye_centres([Landmark(0, 0), Landmark(0, 0), Landmark(0, 0)], [Landmark(0, 0), Landmark(0, 0), Landmark(0, 0)])[0],
+                np.array([0, 1])
+            ) and
+            np.array_equal(
+                normalised_face_cropper._get_left_and_right_eye_centres([Landmark(0, 0), Landmark(0, 0), Landmark(0, 0)], [Landmark(0, 0), Landmark(0, 0), Landmark(0, 0)])[1],
+                np.array([0, 1])
+            ),
+            True
+        )
+
+        self.assertEqual(
+            np.array_equal(
+                normalised_face_cropper._get_left_and_right_eye_centres([Landmark(0, -1), Landmark(0.5, 0), Landmark(1, 1)], [Landmark(0, -1), Landmark(0.5, 0), Landmark(1, 1)])[0],
+                np.array([0.5, 1])
+            ) and
+            np.array_equal(
+                normalised_face_cropper._get_left_and_right_eye_centres([Landmark(0, -1), Landmark(0.5, 0), Landmark(1, 1)], [Landmark(0, -1), Landmark(0.5, 0), Landmark(1, 1)])[1],
+                np.array([0.5, 1])
+            ),
+            True
+        )
 
     def test__get_eyes_midpoint(self):
         self.assertEqual(np.array_equal(normalised_face_cropper._get_eyes_midpoint([0, 0], [0, 0], (100, 200)), np.array([0, 0])), True)
