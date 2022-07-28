@@ -4,7 +4,7 @@ import numpy as np
 
 
 class TestNormalisedFaceCropper(unittest.TestCase):
-    def test_get_face_roll_angle(self):
+    def test__get_face_roll_angle(self):
         self.assertEqual(normalised_face_cropper._get_face_roll_angle([1, 0], [0, 0]), 0)
         self.assertEqual(normalised_face_cropper._get_face_roll_angle([0, 1], [0, 0]), 90)
         self.assertEqual(normalised_face_cropper._get_face_roll_angle([0, 0], [0, 1]), -90)
@@ -15,7 +15,7 @@ class TestNormalisedFaceCropper(unittest.TestCase):
         self.assertEqual(normalised_face_cropper._get_face_roll_angle([0, 0], [1, 1]), 225)
         self.assertEqual(normalised_face_cropper._get_face_roll_angle([1, 0], [0, 1]), -45)
 
-    def test_crop_within_bounds(self):
+    def test__crop_within_bounds(self):
         image = np.array([i for i in range(50 * 100)]).reshape((50, 100))
 
         self.assertEqual(np.array_equal(normalised_face_cropper._crop_within_bounds(image, 0, 49, 0, 99), image), True)
@@ -25,7 +25,7 @@ class TestNormalisedFaceCropper(unittest.TestCase):
         self.assertEqual(np.array_equal(normalised_face_cropper._crop_within_bounds(image, -25, 25, -50, 50), image[:25+1, :50+1]), True)
         self.assertEqual(np.array_equal(normalised_face_cropper._crop_within_bounds(image, -25, 25, 50, 150), image[:25+1, 50:]), True)
 
-    def test_inflate_face_image(self):
+    def test__inflate_face_image(self):
         class FaceBox:
             def __init__(self, xmin, width, ymin, height):
                 self.xmin = xmin
@@ -37,3 +37,11 @@ class TestNormalisedFaceCropper(unittest.TestCase):
 
         self.assertEqual(np.array_equal(normalised_face_cropper._inflate_face_image(image, FaceBox(0.50, 0.25, 0.50, 0.25), 0),image[25:38+1, 50:75+1]), True)
         self.assertEqual(np.array_equal(normalised_face_cropper._inflate_face_image(image, FaceBox(0.50, 0.25, 0.50, 0.25), 1), image[19:44+1, 38:88+1]), True)
+
+    # def test__get_left_and_right_eye_centres(self):
+
+    def test__get_eyes_midpoint(self):
+        self.assertEqual(np.array_equal(normalised_face_cropper._get_eyes_midpoint([0, 0], [0, 0], (100, 200)), np.array([0, 0])), True)
+        self.assertEqual(np.array_equal(normalised_face_cropper._get_eyes_midpoint([0.25, 0.25], [0.75, 0.75], (100, 200)), np.array([100, 50])), True)
+        self.assertEqual(np.array_equal(normalised_face_cropper._get_eyes_midpoint([-0.25, -0.25], [0.75, 0.75], (100, 200)), np.array([50, 25])), True)
+        self.assertEqual(np.array_equal(normalised_face_cropper._get_eyes_midpoint([0.25, 0.25], [1.25, 1.25], (100, 200)), np.array([150, 75])), True)
