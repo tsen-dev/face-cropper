@@ -479,20 +479,27 @@ class FaceCropper:
     Implements the following pipeline for cropping out faces from an image:
         1. Retrieves bounding boxes and approximate eye coordinates for faces in the image, using the mp.solutions.face_detection.FaceDetection network
             - For more about this network, visit https://solutions.mediapipe.dev/face_detection
-        2. For faces with in-plane rotation, the FaceDetection network gives bounding boxes that are much smaller than the face, hence:
-            2.1 The in-plane rotation of a face is found by calculating the angle between the line going through the eye coordinates and the horizontal
-            2.2 The bounding boxes are inflated by a factor relative to the in-plane rotation of the faces, to ensure bounding boxes include the full face under rotation
-        3. The inflated bounding boxes are cropped from the image and passed to the mp.solutions.face_mesh.FaceMesh network to retrieve precise eye coordinates
-            3.1 The retrieved eye coordinates are used to calculate the in-plane rotation angle (like in step 2.1).
-            3.2 The face image (and the landmarks) is rotated by this angle in the opposite direction, about the midpoint between the eyes,
-                to correct the in-plane rotation (i.e. normalise the face)
-                - The eye coordinates from the mp.solutions.face_detection.FaceDetection network in step 1 are not used for this purpose as they are not
-                  precise enough and are only good enough for getting a rough idea of the rotation in the face
-                - mp.solutions.face_mesh.FaceMesh has an integrated mp.solutions.face_detection.FaceDetection model. However, since the integrated network is configured to only
-                  run the short-range model (see https://solutions.mediapipe.dev/face_detection#model_selection), it can't detect faces further than 2 metres away. Having a
-                  separate mp.solutions.face_detection.FaceDetection model makes the face detection network selection configurable depending on requirements
+        2. For faces with in-plane rotation (i.e. roll), the FaceDetection network gives bounding boxes that are much smaller than the face, hence:
+            2.1 The approximate roll of a face is found by calculating the angle between the line going through the eye coordinates and the horizontal
+            2.2 The bounding boxes are inflated by a factor relative to the roll of the faces, to ensure bounding boxes include the full face under rotation
+        3. The inflated bounding boxes are cropped from the image and passed to the mp.solutions.face_mesh.FaceMesh network to retrieve face landmark coordinates
+            - This stage of the pipeline can optionally be configured to also do either or both of the following (all enabled by default):
+                - Set all non-face pixels (i.e. pixels outside the mesh formed by the face landmarks) to 0
+                - Calculate accurate roll angle using eye landmark coordinates of mp.solutions.face_mesh.FaceMesh (like in step 2.1) and correct the roll of the
+                  face by rotating the image (and landmarks) in the opposite direction around the midpoint between the eyes
             - For more about this network, visit https://solutions.mediapipe.dev/face_mesh
-        4. The normalised image is cropped within a minimum bounding box containing the landmark coordinates and returned
+        4. The image is then cropped to the minimum rectangle spanning all face landmarks
+
+    - The eye coordinates from the mp.solutions.face_detection.FaceDetection network in step 1 are not used to correct the roll as they are not
+      accurate enough and are only good enough for getting an approximate roll angle
+
+    - mp.solutions.face_mesh.FaceMesh has an integrated mp.solutions.face_detection.FaceDetection model. However, since the integrated network is configured to only
+      run the short-range model (see https://solutions.mediapipe.dev/face_detection#model_selection), it can't detect faces further than 2 metres away. Having a
+      separate mp.solutions.face_detection.FaceDetection model makes the pipeline more configurable to suit requirements
+
+    - mp.solutions.face_mesh.FaceMesh requires a maximum number of faces (max_num_faces) to be specified during initialisation, while mp.solutions.face_detection.FaceDetection
+      does not have such limitation. Hence, Step 1 uses mp.solutions.face_detection.FaceDetection to get all potential faces, which are then verified with mp.solutions.face_mesh.FaceMesh
+      (max_num_faces=1). I.e., if mp.solutions.face_mesh.FaceMesh can detect landmarks in a potential face detected by mp.solutions.face_detection.FaceDetection, it is taken further in the pipeline
     """
 
     # face_detector_model_selection values
@@ -522,8 +529,8 @@ class FaceCropper:
         :param landmark_detector_static_image_mode:
         From mp.solutions.face_mesh.FaceMesh documentation:
         "Whether to treat the input images as a batch of static and possibly unrelated images, or a video stream. See details in
-        https://solutions.mediapipe.dev/face_mesh#static_image_mode". Set this to False (FaceCropper.TRACKING_MODE) if the images passed to the detector are
-        from the same sequence, and there is always the same one face in the sequence. Defaults to True (FaceCropper.STATIC_MODE).
+        https://solutions.mediapipe.dev/face_mesh#static_image_mode". Defaults to True (FaceCropper.STATIC_MODE). Should only be set to False (FaceCropper.TRACKING_MODE)
+        if the images passed to this pipeline are from the same sequence, AND there is always the same one face in the sequence.
         :param min_landmark_detector_confidence:
         From mp.solutions.face_mesh.FaceMesh documentation:
         "Minimum confidence value ([0.0, 1.0]) for the face landmarks to be considered tracked successfully. See details in
@@ -538,7 +545,7 @@ class FaceCropper:
                                                                  min_detection_confidence=min_landmark_detector_confidence)
 
 
-    def get_faces(self, image, remove_background=True, correct_roll=True):
+    def get_faces(self, image, remove_background=False, correct_roll=True):
         """
         Crop out (and optionally correct the roll and/or remove background of) each detected face in the specified image and return them in a list.
         :param image: A numpy.ndarray RGB image containing faces to be cropped
