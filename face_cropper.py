@@ -483,10 +483,10 @@ class FaceCropper:
             2.1 The approximate roll of a face is found by calculating the angle between the line going through the eye coordinates and the horizontal
             2.2 The bounding boxes are inflated by a factor relative to the roll of the faces, to ensure bounding boxes include the full face under rotation
         3. The inflated bounding boxes are cropped from the image and passed to the mp.solutions.face_mesh.FaceMesh network to retrieve face landmark coordinates
-            - This stage of the pipeline can optionally be configured to also do either or both of the following (all enabled by default):
+            - This stage of the pipeline can optionally be configured to also do either or both of the following:
                 - Set all non-face pixels (i.e. pixels outside the mesh formed by the face landmarks) to 0
                 - Calculate accurate roll angle using eye landmark coordinates of mp.solutions.face_mesh.FaceMesh (like in step 2.1) and correct the roll of the
-                  face by rotating the image (and landmarks) in the opposite direction around the midpoint between the eyes
+                  face by rotating the image (and landmarks) in the opposite direction around the midpoint between the eyes (enabled by default)
             - For more about this network, visit https://solutions.mediapipe.dev/face_mesh
         4. The image is then cropped to the minimum rectangle spanning all face landmarks
 
@@ -529,7 +529,7 @@ class FaceCropper:
         :param landmark_detector_static_image_mode:
         From mp.solutions.face_mesh.FaceMesh documentation:
         "Whether to treat the input images as a batch of static and possibly unrelated images, or a video stream. See details in
-        https://solutions.mediapipe.dev/face_mesh#static_image_mode". Defaults to True (FaceCropper.STATIC_MODE). Should only be set to False (FaceCropper.TRACKING_MODE)
+        https://solutions.mediapipe.dev/face_mesh#static_image_mode". Defaults to True (FaceCropper.STATIC_MODE). May only be set to False (FaceCropper.TRACKING_MODE)
         if the images passed to this pipeline are from the same sequence, AND there is always the same one face in the sequence.
         :param min_landmark_detector_confidence:
         From mp.solutions.face_mesh.FaceMesh documentation:

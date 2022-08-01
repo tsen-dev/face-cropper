@@ -3,8 +3,8 @@ from face_cropper import FaceCropper
 
 face_cropper = FaceCropper()
 
-image_bgr = cv2.imread('image_path')
-if not image_bgr: raise RuntimeError('Image could not be read')
+image_bgr = cv2.imread('demo_1.jpg')
+if image_bgr is None: raise RuntimeError('Image could not be read')
 
 faces_rgb = face_cropper.get_faces(cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB))
 
