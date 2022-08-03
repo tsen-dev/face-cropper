@@ -343,10 +343,10 @@ def _get_left_and_right_eye_centres(left_eye_landmarks, right_eye_landmarks):
     """
     Calculate and return the normalised coordinates of the centres of the left and right eyes in the face. The y
     coordinate is converted from a row number to a height value so that the y coordinate increases for points higher up in the image.
-    :param left_eye_landmarks: The landmarks for the left eye. Must be a list of
-    mediapipe.framework.formats.landmark_pb2.NormalizedLandmark objects.
-    :param right_eye_landmarks: The landmarks for the right eye. Must be a list of
-    mediapipe.framework.formats.landmark_pb2.NormalizedLandmark objects.
+    :param left_eye_landmarks: The landmarks for the left eye (left from the perspective of the image, not the scene).
+    Must be a list of mediapipe.framework.formats.landmark_pb2.NormalizedLandmark objects.
+    :param right_eye_landmarks: The landmarks for the right eye (right from the perspective of the image, not the scene).
+    Must be a list of mediapipe.framework.formats.landmark_pb2.NormalizedLandmark objects.
     :return: ([l_x, l_y], [r_x, r_y]) tuple of two numpy arrays containing the normalised coordinates of the centres of the left and right eyes respectively.
     """
 
@@ -549,8 +549,8 @@ class FaceCropper:
         """
         Crop out (and optionally correct the roll and/or remove background of) each detected face in the specified image and return them in a list.
         :param image: A numpy.ndarray RGB image containing faces to be cropped
-        :param remove_background: Whether non-face (i.e. background) pixels should be set to 0
-        :param correct_roll: Whether the roll in faces should be corrected
+        :param remove_background: Whether non-face (i.e. background) pixels should be set to 0. Defaults to False
+        :param correct_roll: Whether the roll in faces should be corrected. Defaults to True
         :return: A list of numpy.ndarray RGB images containing the cropped faces
         """
 
@@ -568,6 +568,188 @@ class FaceCropper:
 
                 if detected_landmarks is not None:
                     face_landmarks = detected_landmarks[0].landmark
+
+                    if remove_background:
+                        inflated_face_image = _get_segmented_face_image(inflated_face_image, _FACE_MESH, face_landmarks)
+
+                    if correct_roll:
+                        inflated_face_image, face_landmarks = _get_roll_corrected_image_and_landmarks(inflated_face_image, face_landmarks)
+                    else:
+                        face_landmarks = np.ndarray.astype(np.rint(np.array([
+                            np.multiply([landmark.x for landmark in face_landmarks], inflated_face_image.shape[1]),
+                            np.multiply([landmark.y for landmark in face_landmarks], inflated_face_image.shape[0])])), np.int)
+
+                    face_images.append(
+                        _crop_within_bounds(
+                            inflated_face_image,
+                            face_landmarks[1, np.argmin(face_landmarks[1, :])], face_landmarks[1, np.argmax(face_landmarks[1, :])],
+                            face_landmarks[0, np.argmin(face_landmarks[0, :])], face_landmarks[0, np.argmax(face_landmarks[0, :])]
+                        )
+                    )
+
+        return face_images
+
+
+    def get_faces_debug(self, image, remove_background=False, correct_roll=True):
+        """
+        Identical to get_faces(), except it displays the following debug information:
+            - Annotations of face detection boxes and eye coordinates from mp.solutions.face_detection.FaceDetection, approximate roll angle,
+              inflation factor, and inflated face detection boxes
+            - Annotations of landmarks detected from mp.solutions.face_mesh.FaceMesh, eye coordinates, and roll angle
+            - Input images post face-segmentation and roll-correction
+        :param image: A numpy.ndarray RGB image containing faces to be cropped
+        :param remove_background: Whether non-face (i.e. background) pixels should be set to 0
+        :param correct_roll: Whether the roll in faces should be corrected
+        :return: A list of numpy.ndarray RGB images containing the cropped faces
+        """
+
+        face_images = []
+
+        detected_faces = self.face_detector.process(image).detections
+        if detected_faces is None: return face_images
+
+        # IMAGE_DEBUG START #
+        image_debug = image.copy()
+        for face in detected_faces:
+            # Face detection box
+            face_box = face.location_data.relative_bounding_box
+            cv2.rectangle(
+                image_debug,
+                (round(face_box.xmin * image.shape[1]), round(face_box.ymin * image.shape[0])),
+                (round((face_box.xmin + face_box.width) * image.shape[1]),
+                 round((face_box.ymin + face_box.height) * image.shape[0])),
+                (0, 255, 0)
+            )
+            # Eye coordinates
+            eye_coordinates = face.location_data.relative_keypoints[:2]
+            inflation_factor = _get_bounding_box_inflation_factor(eye_coordinates)
+            for eye_coordinate in eye_coordinates:
+                cv2.circle(image_debug, (round(eye_coordinate.x * image.shape[1]), round(eye_coordinate.y * image.shape[0])), 1, (0, 255, 0))
+            # Roll line
+            cv2.line(
+                image_debug,
+                (round(eye_coordinates[0].x * image.shape[1]), round(eye_coordinates[0].y * image.shape[0])),
+                (round(eye_coordinates[1].x * image.shape[1]), round(eye_coordinates[1].y * image.shape[0])),
+                (255, 0, 0)
+            )
+            # Horizontal line
+            cv2.line(
+                image_debug,
+                (round(eye_coordinates[0].x * image.shape[1]), round(eye_coordinates[0].y * image.shape[0])),
+                (round(eye_coordinates[1].x * image.shape[1]), round(eye_coordinates[0].y * image.shape[0])),
+                (255, 0, 0)
+            )
+            # Roll angle
+            cv2.putText(
+                image_debug,
+                'roll_angle: {:.2f}'.format(_get_face_roll_angle([eye_coordinates[1].x, 1 - eye_coordinates[1].y], [eye_coordinates[0].x, 1 - eye_coordinates[0].y])),
+                (round(eye_coordinates[0].x * image.shape[1]), round(eye_coordinates[0].y * image.shape[0] + 40)), cv2.FONT_HERSHEY_PLAIN, 1, (255, 0, 255)
+            )
+            # Inflation factor
+            cv2.putText(
+                image_debug,
+                'inflation_factor: {:.2f}'.format(inflation_factor),
+                (round(eye_coordinates[0].x * image.shape[1]), round(eye_coordinates[0].y * image.shape[0] + 80)), cv2.FONT_HERSHEY_PLAIN, 1, (255, 0, 255)
+            )
+            # Inflated face detection box
+            width_inflation, height_inflation = face_box.width * inflation_factor, face_box.height * inflation_factor
+            cv2.rectangle(
+                image_debug,
+                (round((face_box.xmin - width_inflation / 2) * image.shape[1]), round((face_box.ymin + face_box.height + height_inflation / 2) * image.shape[0])),
+                (round((face_box.xmin + face_box.width + width_inflation / 2) * image.shape[1]), round((face_box.ymin - height_inflation / 2) * image.shape[0])),
+                (0, 0, 255)
+            )
+        cv2.imshow('image_debug', cv2.cvtColor(image_debug, cv2.COLOR_RGB2BGR))
+        # IMAGE_DEBUG END #
+
+        for face in detected_faces:
+            # The mp.solutions.face_detection.FaceDetection network may rarely 'find' a face completely outside the image, so ignore those
+            if 0 <= face.location_data.relative_bounding_box.xmin <= 1 and 0 <= face.location_data.relative_bounding_box.ymin <= 1:
+                inflation_factor = _get_bounding_box_inflation_factor(face.location_data.relative_keypoints[:2])
+                inflated_face_image = _get_inflated_face_image(image, face.location_data.relative_bounding_box, inflation_factor)
+                detected_landmarks = self.landmark_detector.process(inflated_face_image).multi_face_landmarks
+
+                if detected_landmarks is not None:
+                    face_landmarks = detected_landmarks[0].landmark
+
+                    # INFLATED_FACE_IMAGE_DEBUG START #
+                    inflated_face_image_debug = inflated_face_image.copy()
+                    for i, landmark in enumerate(face_landmarks):
+                        # Eye landmarks
+                        if i in _LEFT_EYE_LANDMARK_INDICES or i in _RIGHT_EYE_LANDMARK_INDICES:
+                            cv2.circle(inflated_face_image_debug, (round(landmark.x * inflated_face_image.shape[1]), round(landmark.y * inflated_face_image.shape[0])), 1, (255, 0, 0))
+                        # Face landmarks
+                        else:
+                            cv2.circle(inflated_face_image_debug, (round(landmark.x*inflated_face_image.shape[1]), round(landmark.y*inflated_face_image.shape[0])), 1, (0, 255, 0))
+                    # Eye coordinates
+                    left_eye_centre, right_eye_centre = _get_left_and_right_eye_centres(
+                        [face_landmarks[landmark] for landmark in _LEFT_EYE_LANDMARK_INDICES],
+                        [face_landmarks[landmark] for landmark in _RIGHT_EYE_LANDMARK_INDICES])
+                    for eye_coordinate in [left_eye_centre, right_eye_centre]:
+                        cv2.circle(inflated_face_image_debug, (round(eye_coordinate[0]*inflated_face_image.shape[1]), round((1-eye_coordinate[1])*inflated_face_image.shape[0])), 2, (255, 255, 0))
+                    # Eye midpoint
+                    eyes_midpoint = _get_eyes_midpoint(left_eye_centre, right_eye_centre, inflated_face_image.shape)
+                    cv2.circle(inflated_face_image_debug, (eyes_midpoint[0], inflated_face_image.shape[0] - eyes_midpoint[1]), 2, (0, 0, 255))
+                    # Roll line
+                    cv2.line(
+                        inflated_face_image_debug,
+                        (round(left_eye_centre[0] * inflated_face_image.shape[1]), round((1-left_eye_centre[1]) * inflated_face_image.shape[0])),
+                        (round(right_eye_centre[0] * inflated_face_image.shape[1]), round((1-right_eye_centre[1]) * inflated_face_image.shape[0])),
+                        (255, 0, 0)
+                    )
+                    # Horizontal line
+                    cv2.line(
+                        inflated_face_image_debug,
+                        (round(right_eye_centre[0] * inflated_face_image.shape[1]), round((1-right_eye_centre[1]) * inflated_face_image.shape[0])),
+                        (round(left_eye_centre[0] * inflated_face_image.shape[1]), round((1-right_eye_centre[1]) * inflated_face_image.shape[0])),
+                        (255, 0, 0)
+                    )
+                    # Roll angle
+                    cv2.putText(
+                        inflated_face_image_debug,
+                        'roll_angle: {:.2f}'.format(_get_face_roll_angle(left_eye_centre, right_eye_centre)),
+                        (round(right_eye_centre[0] * inflated_face_image.shape[1]), round((1 - right_eye_centre[1]) * inflated_face_image.shape[0] + 20)),
+                        cv2.FONT_HERSHEY_PLAIN, 1, (255, 0, 255)
+                    )
+                    inflated_face_image_segmented = _get_segmented_face_image(inflated_face_image, _FACE_MESH, face_landmarks)
+                    cv2.imshow('inflated_face_image_debug', cv2.cvtColor(np.row_stack((
+                                np.column_stack((
+                                        inflated_face_image_debug,
+                                        inflated_face_image_segmented
+                                    )
+                                ),
+                                np.column_stack((
+                                        _get_roll_corrected_image_and_landmarks(inflated_face_image, face_landmarks)[0],
+                                        _get_roll_corrected_image_and_landmarks(inflated_face_image_segmented, face_landmarks)[0]
+                                    )
+                                )
+                            )
+                        ), cv2.COLOR_RGB2BGR)
+                    )
+                    # INFLATED_FACE_IMAGE_DEBUG END #
+
+                    # OUTPUT_IMAGE_DEBUG START #
+                    corrected_inflated_face_image, corrected_landmarks = _get_roll_corrected_image_and_landmarks(inflated_face_image, face_landmarks)
+                    corrected_inflated_face_image_segmented, corrected_landmarks = _get_roll_corrected_image_and_landmarks(inflated_face_image_segmented, face_landmarks)
+                    cv2.imshow('output_image_debug', cv2.cvtColor(np.column_stack((
+                                   _crop_within_bounds(
+                                        corrected_inflated_face_image,
+                                        corrected_landmarks[1, np.argmin(corrected_landmarks[1, :])],
+                                        corrected_landmarks[1, np.argmax(corrected_landmarks[1, :])],
+                                        corrected_landmarks[0, np.argmin(corrected_landmarks[0, :])],
+                                        corrected_landmarks[0, np.argmax(corrected_landmarks[0, :])]
+                                    ),
+                                   _crop_within_bounds(
+                                       corrected_inflated_face_image_segmented,
+                                       corrected_landmarks[1, np.argmin(corrected_landmarks[1, :])],
+                                       corrected_landmarks[1, np.argmax(corrected_landmarks[1, :])],
+                                       corrected_landmarks[0, np.argmin(corrected_landmarks[0, :])],
+                                       corrected_landmarks[0, np.argmax(corrected_landmarks[0, :])]
+                                   ),
+                            )
+                        ), cv2.COLOR_RGB2BGR)
+                    )
+                    # OUTPUT_IMAGE_DEBUG END #
 
                     if remove_background:
                         inflated_face_image = _get_segmented_face_image(inflated_face_image, _FACE_MESH, face_landmarks)
