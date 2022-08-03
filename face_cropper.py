@@ -529,12 +529,12 @@ class FaceCropper:
         :param landmark_detector_static_image_mode:
         From mp.solutions.face_mesh.FaceMesh documentation:
         "Whether to treat the input images as a batch of static and possibly unrelated images, or a video stream. See details in
-        https://solutions.mediapipe.dev/face_mesh#static_image_mode". Defaults to True (FaceCropper.STATIC_MODE). May only be set to False (FaceCropper.TRACKING_MODE)
-        if the images passed to this pipeline are from the same sequence, AND there is always the same one face in the sequence.
+        https://solutions.mediapipe.dev/face_mesh#static_image_mode". Should only be set to False (FaceCropper.TRACKING_MODE) if the images passed to this
+        pipeline are from the same sequence, AND there is always the same one face in the sequence. Defaults to True (FaceCropper.STATIC_MODE).
         :param min_landmark_detector_confidence:
         From mp.solutions.face_mesh.FaceMesh documentation:
-        "Minimum confidence value ([0.0, 1.0]) for the face landmarks to be considered tracked successfully. See details in
-        https://solutions.mediapipe.dev/face_mesh#min_tracking_confidence". Defaults to 0.5.
+        "Minimum confidence value ([0.0, 1.0]) from the face detection model for the detection to be considered successful. See details in
+        https://google.github.io/mediapipe/solutions/face_mesh#min_detection_confidence". Defaults to 0.5.
         """
 
         self.face_detector = mp.solutions.face_detection.FaceDetection(min_detection_confidence=min_face_detector_confidence,
