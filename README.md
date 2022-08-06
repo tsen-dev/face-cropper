@@ -1,8 +1,8 @@
 # Contents
-- [Demos](https://github.com/tsen-dev/face-cropper.py#demos)
-- [Overview](https://github.com/tsen-dev/face-cropper.py#overview)
-- [Applications](https://github.com/tsen-dev/face-cropper.py#applications)
-- [User Guide](https://github.com/tsen-dev/face-cropper.py#user-guide)
+- [Demos](https://github.com/tsen-dev/face-cropper#demos)
+- [Overview](https://github.com/tsen-dev/face-cropper#overview)
+- [Applications](https://github.com/tsen-dev/face-cropper#applications)
+- [User Guide](https://github.com/tsen-dev/face-cropper#user-guide)
 
 # Demos
 ![Demo_1](readme_animations/demo_1.gif)
