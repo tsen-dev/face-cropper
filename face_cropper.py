@@ -596,7 +596,7 @@ class FaceCropper:
             - Annotations of face detection boxes and eye coordinates from mp.solutions.face_detection.FaceDetection, approximate roll angle,
               inflation factor, and inflated face detection boxes
             - Annotations of landmarks detected from mp.solutions.face_mesh.FaceMesh, eye coordinates, and roll angle
-            - Input images post face-segmentation and roll-correction
+            - Output images for each (remove_background, correct_roll) combination
         :param image: A numpy.ndarray RGB image containing faces to be cropped
         :param remove_background: Whether non-face (i.e. background) pixels should be set to 0
         :param correct_roll: Whether the roll in faces should be corrected
@@ -729,9 +729,33 @@ class FaceCropper:
                     # INFLATED_FACE_IMAGE_DEBUG END #
 
                     # OUTPUT_IMAGE_DEBUG START #
+                    landmarks = np.ndarray.astype(np.rint(np.array([
+                            np.multiply([landmark.x for landmark in face_landmarks], inflated_face_image.shape[1]),
+                            np.multiply([landmark.y for landmark in face_landmarks], inflated_face_image.shape[0])])), np.int)
+                    cv2.imshow('output_image_debug', cv2.cvtColor(np.column_stack((
+                                   _crop_within_bounds(
+                                        inflated_face_image,
+                                        landmarks[1, np.argmin(landmarks[1, :])],
+                                        landmarks[1, np.argmax(landmarks[1, :])],
+                                        landmarks[0, np.argmin(landmarks[0, :])],
+                                        landmarks[0, np.argmax(landmarks[0, :])]
+                                    ),
+                                   _crop_within_bounds(
+                                       inflated_face_image_segmented,
+                                       landmarks[1, np.argmin(landmarks[1, :])],
+                                       landmarks[1, np.argmax(landmarks[1, :])],
+                                       landmarks[0, np.argmin(landmarks[0, :])],
+                                       landmarks[0, np.argmax(landmarks[0, :])]
+                                   ),
+                            )
+                        ), cv2.COLOR_RGB2BGR)
+                    )
+                    # OUTPUT_IMAGE_DEBUG END #
+
+                    # OUTPUT_IMAGE_CORRECTED_DEBUG START #
                     corrected_inflated_face_image, corrected_landmarks = _get_roll_corrected_image_and_landmarks(inflated_face_image, face_landmarks)
                     corrected_inflated_face_image_segmented, corrected_landmarks = _get_roll_corrected_image_and_landmarks(inflated_face_image_segmented, face_landmarks)
-                    cv2.imshow('output_image_debug', cv2.cvtColor(np.column_stack((
+                    cv2.imshow('output_image_corrected_debug', cv2.cvtColor(np.column_stack((
                                    _crop_within_bounds(
                                         corrected_inflated_face_image,
                                         corrected_landmarks[1, np.argmin(corrected_landmarks[1, :])],
@@ -749,7 +773,7 @@ class FaceCropper:
                             )
                         ), cv2.COLOR_RGB2BGR)
                     )
-                    # OUTPUT_IMAGE_DEBUG END #
+                    # OUTPUT_IMAGE_CORRECTED_DEBUG END #
 
                     if remove_background:
                         inflated_face_image = _get_segmented_face_image(inflated_face_image, _FACE_MESH, face_landmarks)
