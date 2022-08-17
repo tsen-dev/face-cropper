@@ -42,10 +42,14 @@ Implements the following pipeline for cropping out faces from an image:
 
           
 4. The image is then cropped to the minimum rectangle spanning all face landmarks:
+
+   - Without roll-correction:
+      
+      ![Step_4_a](readme_animations/step_4_a.gif)
    
-   ![Step_4_a](readme_animations/step_4_a.gif)
+   - With roll-correction:
    
-   ![Step_4_b](readme_animations/step_4_b.gif)
+      ![Step_4_b](readme_animations/step_4_b.gif)
 
 
 The eye coordinates from the [FaceDetection](https://google.github.io/mediapipe/solutions/face_detection.html) network in step 1 are not used to correct the roll as they are not accurate enough and are only good enough for getting an approximate roll angle
